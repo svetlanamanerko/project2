@@ -30,6 +30,31 @@ export async function addCourse(formData: FormData) {
   revalidatePath('/courses');
 }
 
+export async function updateCourse(formData: FormData) {
+  const courseId = String(formData.get('courseId') || '').trim();
+  const title = String(formData.get('title') || '').trim();
+  const gradeRaw = String(formData.get('grade') || '').trim();
+  if (!courseId || !title) return;
+  const grade = gradeRaw ? Number(gradeRaw) : null;
+  await requireDb()`UPDATE courses SET title=${title}, grade=${grade} WHERE id=${courseId}`;
+  revalidatePath('/courses');
+  revalidatePath('/students');
+  revalidatePath('/');
+}
+
+export async function deleteCourse(formData: FormData) {
+  const courseId = String(formData.get('courseId') || '').trim();
+  if (!courseId) return;
+  const sql = requireDb();
+  const linked = await sql<Array<{ count: number }>>`
+    SELECT count(*)::int as count FROM enrollments WHERE course_id=${courseId}
+  `;
+  if ((linked[0]?.count || 0) > 0) redirect('/courses?error=linked');
+  await sql`DELETE FROM courses WHERE id=${courseId}`;
+  revalidatePath('/courses');
+  redirect('/courses?deleted=1');
+}
+
 export async function configureStudentCourse(formData: FormData) {
   const studentId = String(formData.get('studentId') || '').trim();
   const courseId = String(formData.get('courseId') || '').trim();
