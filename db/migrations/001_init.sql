@@ -141,6 +141,16 @@ CREATE TABLE IF NOT EXISTS materials (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS app_integrations (
+  provider text PRIMARY KEY,
+  encrypted_refresh_token text NOT NULL,
+  account_email text,
+  root_folder_id text,
+  root_folder_name text,
+  connected_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
 CREATE INDEX IF NOT EXISTS idx_lessons_enrollment_date ON lessons(enrollment_id, scheduled_date);
 CREATE INDEX IF NOT EXISTS idx_recycling_active ON recycling_items(enrollment_id, status, priority);
 CREATE INDEX IF NOT EXISTS idx_urgent_status ON urgent_requests(enrollment_id, status);
