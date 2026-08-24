@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { hasSession } from '@/lib/auth';
 import { exchangeGoogleCode, inspectGoogleDrive, saveGoogleDriveConnection } from '@/lib/google-drive';
+import { publicUrl } from '@/lib/public-url';
 
 const STATE_COOKIE = 'mu_google_oauth_state';
 
 export async function GET(request: NextRequest) {
-  const settingsUrl = new URL('/settings', request.url);
+  const settingsUrl = new URL(publicUrl(request, '/settings'));
   const responseWith = (value: string) => {
     settingsUrl.searchParams.set('drive', value);
     const response = NextResponse.redirect(settingsUrl);
@@ -13,7 +14,7 @@ export async function GET(request: NextRequest) {
     return response;
   };
 
-  if (!(await hasSession())) return NextResponse.redirect(new URL('/login', request.url));
+  if (!(await hasSession())) return NextResponse.redirect(publicUrl(request, '/login'));
 
   const error = request.nextUrl.searchParams.get('error');
   if (error) return responseWith('cancelled');
@@ -24,7 +25,7 @@ export async function GET(request: NextRequest) {
   if (!state || !expectedState || state !== expectedState || !code) return responseWith('invalid-state');
 
   try {
-    const redirectUri = new URL('/api/google/callback', request.url).toString();
+    const redirectUri = publicUrl(request, '/api/google/callback');
     const token = await exchangeGoogleCode(code, redirectUri);
     if (!token.refresh_token) return responseWith('no-refresh-token');
 
