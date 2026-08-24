@@ -1,0 +1,7 @@
+.fileUpload{display:grid!important;grid-template-columns:32px minmax(180px,1fr);align-items:center;gap:4px 12px;padding:14px 16px;border:1.5px dashed #cfd2e6;border-radius:16px;background:linear-gradient(135deg,#fbfaff,#f7fffb);color:#526080;cursor:pointer}
+.fileUpload>svg{grid-row:1;color:#6b6f96}
+.fileUpload>span{display:grid;gap:3px;font-weight:400}
+.fileUpload strong{font-size:13px;color:#27345e}
+.fileUpload small{font-size:11px;color:#7a829d;font-weight:500}
+.fileUpload input{grid-column:1/-1;margin-top:8px;border:1px solid #dfe2f0!important;background:#fff!important;border-radius:12px!important;padding:9px 11px!important;font-size:12px!important;cursor:pointer}
+.fileUpload input::file-selector-button{border:0;border-radius:9px;padding:7px 10px;margin-right:10px;background:#efecff;color:#6257d9;font-weight:750;cursor:pointer}

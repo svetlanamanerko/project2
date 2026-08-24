@@ -99,6 +99,17 @@ CREATE TABLE IF NOT EXISTS urgent_requests (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS urgent_attachments (
+  id text PRIMARY KEY,
+  urgent_request_id text NOT NULL REFERENCES urgent_requests(id) ON DELETE CASCADE,
+  filename text NOT NULL,
+  stored_name text NOT NULL,
+  mime_type text,
+  size_bytes bigint NOT NULL DEFAULT 0,
+  local_path text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS upcoming_tasks (
   id text PRIMARY KEY,
   enrollment_id text REFERENCES enrollments(id) ON DELETE CASCADE,
@@ -133,4 +144,5 @@ CREATE TABLE IF NOT EXISTS materials (
 CREATE INDEX IF NOT EXISTS idx_lessons_enrollment_date ON lessons(enrollment_id, scheduled_date);
 CREATE INDEX IF NOT EXISTS idx_recycling_active ON recycling_items(enrollment_id, status, priority);
 CREATE INDEX IF NOT EXISTS idx_urgent_status ON urgent_requests(enrollment_id, status);
+CREATE INDEX IF NOT EXISTS idx_urgent_attachments_request ON urgent_attachments(urgent_request_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_schedule_weekday ON schedule_rules(iso_weekday, start_time);
