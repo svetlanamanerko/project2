@@ -2,6 +2,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { revalidatePath } from 'next/cache';
+import { redirect } from 'next/navigation';
 import { db, dbConfigured } from '@/lib/db';
 
 function requireDb() {
@@ -93,17 +94,35 @@ export async function configureStudentCourse(formData: FormData) {
 }
 
 export async function createUrgentRequest(formData: FormData) {
-  const enrollmentId = String(formData.get('enrollmentId') || '');
+  const enrollmentId = String(formData.get('enrollmentId') || '').trim();
   const description = String(formData.get('description') || '').trim();
-  if (!enrollmentId || !description) return;
+  if (!enrollmentId || !description) redirect('/urgent?error=missing');
+
   const sql = requireDb();
   const requestId = randomUUID();
   const lessonId = randomUUID();
-  await sql.begin(async (tx) => {
-    await tx`INSERT INTO lessons (id, enrollment_id, lesson_type, status, title) VALUES (${lessonId}, ${enrollmentId}, 'urgent', 'draft', ${`Срочная помощь: ${description.slice(0, 80)}`})`;
-    await tx`INSERT INTO urgent_requests (id, enrollment_id, description, status, lesson_id) VALUES (${requestId}, ${enrollmentId}, ${description}, 'draft', ${lessonId})`;
-  });
+  let failed = false;
+
+  try {
+    await sql.begin(async (tx) => {
+      await tx`
+        INSERT INTO lessons (id, enrollment_id, lesson_type, status, title)
+        VALUES (${lessonId}, ${enrollmentId}, 'urgent', 'draft', ${`Срочная помощь: ${description.slice(0, 80)}`})
+      `;
+      await tx`
+        INSERT INTO urgent_requests (id, enrollment_id, description, status, lesson_id)
+        VALUES (${requestId}, ${enrollmentId}, ${description}, 'draft', ${lessonId})
+      `;
+    });
+  } catch (error) {
+    failed = true;
+    console.error('[urgent] Не удалось создать срочный запрос:', error);
+  }
+
+  if (failed) redirect('/urgent?error=save');
   revalidatePath('/urgent');
+  revalidatePath('/');
+  redirect('/urgent?created=1');
 }
 
 export async function createTodayDrafts() {
