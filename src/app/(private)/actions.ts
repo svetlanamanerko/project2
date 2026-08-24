@@ -1,6 +1,8 @@
 'use server';
 
 import { randomUUID } from 'node:crypto';
+import { mkdir, unlink, writeFile } from 'node:fs/promises';
+import path from 'node:path';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { db, dbConfigured } from '@/lib/db';
@@ -96,14 +98,44 @@ export async function configureStudentCourse(formData: FormData) {
 export async function createUrgentRequest(formData: FormData) {
   const enrollmentId = String(formData.get('enrollmentId') || '').trim();
   const description = String(formData.get('description') || '').trim();
+  const attachment = formData.get('attachment');
+
   if (!enrollmentId || !description) redirect('/urgent?error=missing');
+  if (attachment instanceof File && attachment.size > 15 * 1024 * 1024) {
+    redirect('/urgent?error=file-too-large');
+  }
 
   const sql = requireDb();
   const requestId = randomUUID();
   const lessonId = randomUUID();
+  let savedFile: null | {
+    id: string;
+    filename: string;
+    storedName: string;
+    mimeType: string;
+    size: number;
+    localPath: string;
+  } = null;
   let failed = false;
 
   try {
+    if (attachment instanceof File && attachment.size > 0) {
+      const extension = path.extname(attachment.name).replace(/[^.a-zA-Z0-9]/g, '').slice(0, 12);
+      const storedName = `${randomUUID()}${extension}`;
+      const folder = path.join(process.env.DATA_DIR?.trim() || '/data', 'uploads', 'urgent', requestId);
+      await mkdir(folder, { recursive: true });
+      const localPath = path.join(folder, storedName);
+      await writeFile(localPath, Buffer.from(await attachment.arrayBuffer()));
+      savedFile = {
+        id: randomUUID(),
+        filename: attachment.name || 'attachment',
+        storedName,
+        mimeType: attachment.type || 'application/octet-stream',
+        size: attachment.size,
+        localPath,
+      };
+    }
+
     await sql.begin(async (tx) => {
       await tx`
         INSERT INTO lessons (id, enrollment_id, lesson_type, status, title)
@@ -113,14 +145,22 @@ export async function createUrgentRequest(formData: FormData) {
         INSERT INTO urgent_requests (id, enrollment_id, description, status, lesson_id)
         VALUES (${requestId}, ${enrollmentId}, ${description}, 'draft', ${lessonId})
       `;
+      if (savedFile) {
+        await tx`
+          INSERT INTO urgent_attachments (id, urgent_request_id, filename, stored_name, mime_type, size_bytes, local_path)
+          VALUES (${savedFile.id}, ${requestId}, ${savedFile.filename}, ${savedFile.storedName}, ${savedFile.mimeType}, ${savedFile.size}, ${savedFile.localPath})
+        `;
+      }
     });
   } catch (error) {
     failed = true;
+    if (savedFile) await unlink(savedFile.localPath).catch(() => undefined);
     console.error('[urgent] Не удалось создать срочный запрос:', error);
   }
 
   if (failed) redirect('/urgent?error=save');
   revalidatePath('/urgent');
+  revalidatePath('/materials');
   revalidatePath('/');
   redirect('/urgent?created=1');
 }
