@@ -3,6 +3,7 @@ import { dbConfigured } from '@/lib/db';
 import { getCourses, getEnrollments, getStudents } from '@/lib/data';
 import { EmptyState } from '@/components/EmptyState';
 import { addStudent, configureStudentCourse } from '../actions';
+import styles from './students.module.css';
 
 const weekdays = [
   ['1', 'Понедельник'],
@@ -31,21 +32,21 @@ export default async function StudentsPage() {
       </section>
     </div>
 
-    <section className="panel learning-setup">
+    <section className={`panel ${styles.learningSetup}`}>
       <div className="panel-title"><div><h2><BookOpenCheck size={18}/>Настроить обучение</h2><p className="muted small">Свяжите ученика с учебником, укажите расписание и где сейчас находится школа.</p></div><span className="soft-badge">один раз — потом обновляем по ходу</span></div>
 
-      {!hasDb ? <div className="notice warning">Сначала подключим PostgreSQL.</div> : students.length === 0 || courses.length === 0 ? <div className="notice warning">Сначала добавьте хотя бы одного ученика и один курс.</div> : <form action={configureStudentCourse} className="setup-grid">
+      {!hasDb ? <div className="notice warning">Сначала подключим PostgreSQL.</div> : students.length === 0 || courses.length === 0 ? <div className="notice warning">Сначала добавьте хотя бы одного ученика и один курс.</div> : <form action={configureStudentCourse} className={styles.setupGrid}>
         <label>Ученик<select name="studentId" required defaultValue=""><option value="" disabled>Выберите ученика</option>{students.map((s) => <option value={s.id} key={s.id}>{s.displayName}</option>)}</select></label>
         <label>Курс<select name="courseId" required defaultValue=""><option value="" disabled>Выберите курс</option>{courses.map((c) => <option value={c.id} key={c.id}>{c.title}</option>)}</select></label>
         <label>День<select name="weekday" defaultValue=""><option value="">Пока не указывать</option>{weekdays.map(([value,label]) => <option value={value} key={value}>{label}</option>)}</select></label>
-        <label>Время<div className="input-icon-wrap"><Clock3 size={16}/><input name="time" type="time"/></div></label>
+        <label>Время<div className={styles.inputIcon}><Clock3 size={16}/><input name="time" type="time"/></div></label>
         <label>Модуль / раздел<input name="module" placeholder="Например, Module 1"/></label>
         <label>Тема школы<input name="topic" placeholder="Например, Present Simple"/></label>
-        <label className="setup-note">Что важно сейчас<textarea name="note" rows={2} placeholder="Школа ушла вперёд; не поняла вопросы; скоро контрольная…"/></label>
-        <button className="button primary setup-submit" type="submit">Сохранить маршрут</button>
+        <label className={styles.note}>Что важно сейчас<textarea name="note" rows={2} placeholder="Школа ушла вперёд; не поняла вопросы; скоро контрольная…"/></label>
+        <button className={`button primary ${styles.submit}`} type="submit">Сохранить маршрут</button>
       </form>}
     </section>
 
-    {enrollments.length > 0 && <section className="panel route-panel"><div className="panel-title"><h2>Текущие маршруты</h2><span className="count-badge">{enrollments.length}</span></div><div className="route-chips">{enrollments.map((e) => <div className="route-chip" key={e.id}><UserRound size={15}/><strong>{e.student}</strong><span>→</span><span>{e.course}</span></div>)}</div></section>}
+    {enrollments.length > 0 && <section className={`panel ${styles.routePanel}`}><div className="panel-title"><h2>Текущие маршруты</h2><span className="count-badge">{enrollments.length}</span></div><div className={styles.routeChips}>{enrollments.map((e) => <div className={styles.routeChip} key={e.id}><UserRound size={15}/><strong>{e.student}</strong><span>→</span><span>{e.course}</span></div>)}</div></section>}
   </>;
 }
