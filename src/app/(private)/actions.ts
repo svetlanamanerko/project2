@@ -27,6 +27,71 @@ export async function addCourse(formData: FormData) {
   revalidatePath('/courses');
 }
 
+export async function configureStudentCourse(formData: FormData) {
+  const studentId = String(formData.get('studentId') || '').trim();
+  const courseId = String(formData.get('courseId') || '').trim();
+  const weekdayRaw = String(formData.get('weekday') || '').trim();
+  const time = String(formData.get('time') || '').trim();
+  const module = String(formData.get('module') || '').trim();
+  const topic = String(formData.get('topic') || '').trim();
+  const note = String(formData.get('note') || '').trim();
+
+  if (!studentId || !courseId) return;
+
+  const sql = requireDb();
+  await sql.begin(async (tx) => {
+    const existing = await tx<Array<{ id: string }>>`
+      SELECT id FROM enrollments
+      WHERE student_id=${studentId} AND course_id=${courseId}
+      LIMIT 1
+    `;
+
+    const enrollmentId = existing[0]?.id || randomUUID();
+
+    if (existing.length) {
+      await tx`UPDATE enrollments SET active=true WHERE id=${enrollmentId}`;
+    } else {
+      await tx`
+        INSERT INTO enrollments (id, student_id, course_id, active, started_on)
+        VALUES (${enrollmentId}, ${studentId}, ${courseId}, true, CURRENT_DATE)
+      `;
+    }
+
+    if (module || topic || note) {
+      await tx`
+        INSERT INTO school_positions (enrollment_id, module, topic, note, updated_at)
+        VALUES (${enrollmentId}, ${module || null}, ${topic || null}, ${note || null}, now())
+        ON CONFLICT (enrollment_id) DO UPDATE SET
+          module=EXCLUDED.module,
+          topic=EXCLUDED.topic,
+          note=EXCLUDED.note,
+          updated_at=now()
+      `;
+    }
+
+    const weekday = weekdayRaw ? Number(weekdayRaw) : null;
+    if (weekday && time) {
+      const same = await tx<Array<{ id: string }>>`
+        SELECT id FROM schedule_rules
+        WHERE enrollment_id=${enrollmentId}
+          AND iso_weekday=${weekday}
+          AND start_time=${time}::time
+        LIMIT 1
+      `;
+      if (!same.length) {
+        await tx`
+          INSERT INTO schedule_rules (id, enrollment_id, iso_weekday, start_time, active)
+          VALUES (${randomUUID()}, ${enrollmentId}, ${weekday}, ${time}::time, true)
+        `;
+      }
+    }
+  });
+
+  revalidatePath('/students');
+  revalidatePath('/');
+  revalidatePath('/urgent');
+}
+
 export async function createUrgentRequest(formData: FormData) {
   const enrollmentId = String(formData.get('enrollmentId') || '');
   const description = String(formData.get('description') || '').trim();
@@ -43,7 +108,7 @@ export async function createUrgentRequest(formData: FormData) {
 
 export async function createTodayDrafts() {
   const sql = requireDb();
-  const zone = process.env.APP_TIMEZONE || 'Europe/Amsterdam';
+  const zone = process.env.APP_TIMEZONE || 'Europe/Moscow';
   const date = new Intl.DateTimeFormat('sv-SE', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
   const d = new Date(`${date}T12:00:00Z`).getUTCDay();
   const weekday = d === 0 ? 7 : d;
