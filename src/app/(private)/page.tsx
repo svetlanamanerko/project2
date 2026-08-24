@@ -12,7 +12,42 @@ export default async function TodayPage() {
   const hasDb = dbConfigured();
 
   return <>
-    <header className="hero"><div><p className="eyebrow">Рабочий день без хаоса</p><h1>Сегодня в мастерской</h1><p className="muted">Всё, что нужно подготовить, повторить и не забыть.</p></div><div className="hero-art"><span></span><span></span><span></span></div></header>
+    <header className="hero hero-rich">
+      <div className="hero-copy">
+        <p className="eyebrow">Рабочий день без хаоса</p>
+        <h1>Сегодня в мастерской</h1>
+        <p className="muted">Всё, что нужно подготовить, повторить и не забыть.</p>
+        <div className="hero-chips">
+          <span><CalendarDays size={14}/><strong>{lessons.length}</strong> уроков сегодня</span>
+          <span><CheckCircle2 size={14}/><strong>{ready}</strong> уже готовы</span>
+          <span><RefreshCw size={14}/><strong>{recycling.length}</strong> в повторении</span>
+        </div>
+      </div>
+      <div className="hero-scene" aria-hidden="true">
+        <div className="hero-glow glow-one"></div>
+        <div className="hero-glow glow-two"></div>
+        <div className="hero-spark spark-one">✦</div>
+        <div className="hero-spark spark-two">✧</div>
+        <div className="hero-spark spark-three">✦</div>
+        <div className="hero-mini-card">
+          <span className="mini-card-icon"><Sparkles size={15}/></span>
+          <span><b>План дня</b><small>всё под контролем</small></span>
+        </div>
+        <div className="book-stack">
+          <span className="book book-lilac"></span>
+          <span className="book book-pink"></span>
+          <span className="book book-mint"></span>
+        </div>
+        <div className="hero-notebook">
+          <span className="notebook-ring r1"></span><span className="notebook-ring r2"></span><span className="notebook-ring r3"></span>
+          <span className="notebook-line l1"></span><span className="notebook-line l2"></span><span className="notebook-line l3"></span>
+          <span className="notebook-check">✓</span>
+        </div>
+        <div className="hero-cup"><span className="cup-heart">♥</span><span className="cup-handle"></span><span className="steam s1"></span><span className="steam s2"></span></div>
+        <div className="hero-sprig"><i></i><i></i><i></i><i></i><i></i></div>
+        <div className="hero-desk-shadow"></div>
+      </div>
+    </header>
     {!hasDb && <div className="notice warning">PostgreSQL пока не подключена. Интерфейс уже работает; после подключения базы здесь появятся реальные ученики и расписание.</div>}
     <section className="summary-strip">
       <div><CalendarDays/><span><strong>{lessons.length}</strong> уроков сегодня</span></div>
