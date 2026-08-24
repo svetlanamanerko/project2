@@ -1,10 +1,12 @@
 .learningSetup{margin-top:18px;background:linear-gradient(145deg,rgba(255,255,255,.96),rgba(246,243,255,.92));}
-.setupGrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;align-items:end;}
-.setupGrid label{display:grid;gap:7px;font-size:12px;font-weight:750;color:#17224a;}
-.setupGrid input,.setupGrid select,.setupGrid textarea{border:1px solid #dfe2f0;background:#fcfcff;border-radius:13px;padding:12px 13px;color:#17224a;outline:none;width:100%;}
+.setupGrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px 18px;align-items:end;}
+.setupGrid label{display:grid;gap:7px;font-size:12px;font-weight:750;color:#17224a;min-width:0;}
+.setupGrid input,.setupGrid select,.setupGrid textarea{border:1px solid #dfe2f0;background:#fcfcff;border-radius:13px;padding:12px 13px;color:#17224a;outline:none;width:100%;min-height:46px;}
+.setupGrid textarea{min-height:82px;resize:vertical;}
 .setupGrid input:focus,.setupGrid select:focus,.setupGrid textarea:focus{border-color:#8f83ef;box-shadow:0 0 0 3px rgba(111,101,246,.12);}
-.note{grid-column:span 3;}
-.submit{min-height:68px;}
+.setupGrid>label:nth-of-type(5),.setupGrid>label:nth-of-type(6){grid-column:span 2;}
+.note{grid-column:1/-1;}
+.submit{grid-column:1/-1;justify-self:start;min-height:46px;min-width:210px;margin-top:2px;}
 .inputIcon{position:relative;}
 .inputIcon svg{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:#7c7fa0;pointer-events:none;}
 .inputIcon input{padding-left:38px;}
@@ -12,5 +14,5 @@
 .routeChips{display:flex;flex-wrap:wrap;gap:10px;}
 .routeChip{display:inline-flex;align-items:center;gap:8px;padding:10px 13px;border:1px solid #e5e7f3;border-radius:999px;background:linear-gradient(90deg,#fff,#faf8ff);font-size:12px;color:#526080;}
 .routeChip strong{color:#17224a;}
-@media(max-width:1100px){.setupGrid{grid-template-columns:repeat(2,minmax(0,1fr));}.note{grid-column:span 2;}.submit{min-height:46px;}}
-@media(max-width:640px){.setupGrid{grid-template-columns:1fr}.note{grid-column:auto}.submit{min-height:46px}.routeChip{border-radius:16px;}}
+@media(max-width:1100px){.setupGrid{grid-template-columns:repeat(2,minmax(0,1fr));}.setupGrid>label:nth-of-type(5),.setupGrid>label:nth-of-type(6){grid-column:span 1;}.note{grid-column:1/-1;}.submit{grid-column:1/-1;}}
+@media(max-width:640px){.setupGrid{grid-template-columns:1fr;}.setupGrid>label:nth-of-type(5),.setupGrid>label:nth-of-type(6),.note,.submit{grid-column:auto;}.submit{width:100%;}.routeChip{border-radius:16px;}}
