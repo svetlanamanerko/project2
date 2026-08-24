@@ -10,6 +10,7 @@ export type TodayLesson = {
   lessonId: string | null;
   status: 'draft' | 'prepared' | 'done' | 'cancelled' | 'missing';
   note: string | null;
+  summary: string | null;
 };
 
 function todayString() {
@@ -24,10 +25,10 @@ function isoWeekday(date: string) {
 
 function demoLessons(): TodayLesson[] {
   return [
-    { scheduleId: 'd1', time: '14:00', student: 'Ученик 1', course: 'Spotlight 4', enrollmentId: 'e1', lessonId: 'l1', status: 'prepared', note: 'повторить чтение и грамматику' },
-    { scheduleId: 'd2', time: '16:00', student: 'Ученик 2', course: 'Spotlight 5', enrollmentId: 'e2', lessonId: null, status: 'missing', note: 'школа ушла вперёд' },
-    { scheduleId: 'd3', time: '18:00', student: 'Ученик 3', course: 'Spotlight 7', enrollmentId: 'e3', lessonId: null, status: 'missing', note: 'добавить говорение' },
-    { scheduleId: 'd4', time: '20:00', student: 'Ученик 4', course: 'Starlight 9', enrollmentId: 'e4', lessonId: null, status: 'missing', note: 'пришла срочная школьная тема' },
+    { scheduleId: 'd1', time: '14:00', student: 'Ученик 1', course: 'Spotlight 4', enrollmentId: 'e1', lessonId: 'l1', status: 'prepared', note: 'повторить чтение и грамматику', summary: null },
+    { scheduleId: 'd2', time: '16:00', student: 'Ученик 2', course: 'Spotlight 5', enrollmentId: 'e2', lessonId: null, status: 'missing', note: 'школа ушла вперёд', summary: null },
+    { scheduleId: 'd3', time: '18:00', student: 'Ученик 3', course: 'Spotlight 7', enrollmentId: 'e3', lessonId: null, status: 'missing', note: 'добавить говорение', summary: null },
+    { scheduleId: 'd4', time: '20:00', student: 'Ученик 4', course: 'Starlight 9', enrollmentId: 'e4', lessonId: null, status: 'missing', note: 'пришла срочная школьная тема', summary: null },
   ];
 }
 
@@ -45,7 +46,8 @@ export async function getTodayLessons() {
       e.id as "enrollmentId",
       l.id as "lessonId",
       COALESCE(l.status, 'missing') as status,
-      COALESCE(sp.note, sp.topic) as note
+      COALESCE(sp.note, sp.topic) as note,
+      l.summary as summary
     FROM schedule_rules sr
     JOIN enrollments e ON e.id = sr.enrollment_id AND e.active = true
     JOIN students s ON s.id = e.student_id AND s.active = true
