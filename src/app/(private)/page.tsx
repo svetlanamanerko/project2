@@ -5,6 +5,7 @@ import { StatusPill } from '@/components/StatusPill';
 import { EmptyState } from '@/components/EmptyState';
 import { createTodayDrafts } from './actions';
 import './hero.css';
+import './hero-sprig-fix.css';
 
 export default async function TodayPage() {
   const [lessons, recycling, tasks] = await Promise.all([getTodayLessons(), getRecycling(), getUpcomingTasks()]);
