@@ -13,7 +13,7 @@ export type TodayLesson = {
 };
 
 function todayString() {
-  const zone = process.env.APP_TIMEZONE || 'Europe/Amsterdam';
+  const zone = process.env.APP_TIMEZONE || 'Europe/Moscow';
   return new Intl.DateTimeFormat('sv-SE', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 }
 
@@ -103,7 +103,13 @@ export async function getEnrollments() {
 
 export async function getMaterials() {
   if (!dbConfigured()) return [];
-  return db()<Array<{ id: string; title: string; kind: string; driveUrl: string | null }>>`
-    SELECT id, title, kind, drive_url as "driveUrl" FROM materials ORDER BY created_at DESC LIMIT 50
+  return db()<Array<{ id: string; title: string; kind: string; driveUrl: string | null; localUrl: string | null; createdAt: string }>>`
+    SELECT id, title, kind, drive_url as "driveUrl", NULL::text as "localUrl", created_at as "createdAt"
+    FROM materials
+    UNION ALL
+    SELECT id, filename as title, 'Срочное вложение' as kind, NULL::text as "driveUrl", '/api/files/' || id as "localUrl", created_at as "createdAt"
+    FROM urgent_attachments
+    ORDER BY "createdAt" DESC
+    LIMIT 50
   `;
 }
