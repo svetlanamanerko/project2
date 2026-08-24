@@ -1,0 +1,9 @@
+.hero-sprig{right:8px;top:0;width:108px;height:98px;transform:rotate(7deg);z-index:3}
+.hero-sprig:before{content:"";position:absolute;left:54px;top:8px;width:3px;height:84px;border-radius:999px;background:linear-gradient(180deg,#86b98f,#5f956e);transform:rotate(10deg);transform-origin:bottom center;box-shadow:0 0 0 1px rgba(89,142,103,.05)}
+.hero-sprig:after{content:"";position:absolute;left:55px;top:43px;width:34px;height:3px;border-radius:999px;background:#6da377;transform:rotate(-28deg);transform-origin:left center;box-shadow:-28px 17px 0 -1px #6da377}
+.hero-sprig i{position:absolute;width:30px;height:16px;border-radius:100% 0 100% 0;background:linear-gradient(135deg,#a9d2ac,#73ad7d);box-shadow:inset 3px 2px 5px rgba(255,255,255,.22);transform-origin:90% 80%}
+.hero-sprig i:nth-child(1){left:25px;top:16px;transform:rotate(-42deg)}
+.hero-sprig i:nth-child(2){left:55px;top:27px;transform:rotate(32deg)}
+.hero-sprig i:nth-child(3){left:18px;top:48px;transform:rotate(-28deg)}
+.hero-sprig i:nth-child(4){left:65px;top:51px;transform:rotate(47deg)}
+.hero-sprig i:nth-child(5){left:41px;top:1px;width:24px;height:13px;transform:rotate(5deg)}
