@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation';
 import { getLessonDesignData } from '@/lib/design-data';
 import { InteractiveLesson } from './InteractiveLesson';
-import { LessonJsonPlayer } from './LessonJsonPlayer';
+import { LessonPlayerV3 } from './LessonPlayerV3';
 
 export default async function InteractiveLessonPage({ params }: { params: Promise<{ lessonId: string }> }) {
   const { lessonId } = await params;
@@ -9,17 +9,17 @@ export default async function InteractiveLessonPage({ params }: { params: Promis
   if (!lesson) notFound();
 
   if (lesson.interactiveLesson) {
-    return <div className="lesson-json-v2" data-design-style="teen-study">
-      <LessonJsonPlayer
-        lessonId={lesson.lessonId}
-        student={lesson.student}
-        course={lesson.course}
-        title={lesson.title}
-        sourceLabel={lesson.sourceLabel}
-        lesson={lesson.interactiveLesson}
-        sourceAvailable={lesson.sourceAvailable}
-      />
-    </div>;
+    return <LessonPlayerV3
+      lessonId={lesson.lessonId}
+      student={lesson.student}
+      course={lesson.course}
+      title={lesson.title}
+      sourceLabel={lesson.sourceLabel}
+      lesson={lesson.interactiveLesson}
+      sourceAvailable={lesson.sourceAvailable}
+      designStyle="teen-study"
+      standalone
+    />;
   }
 
   return <InteractiveLesson
