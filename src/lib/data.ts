@@ -200,6 +200,65 @@ export async function getCourses() {
   `;
 }
 
+export type CourseDetails = {
+  id: string;
+  title: string;
+  grade: number | null;
+  publisher: string | null;
+  driveFolderId: string | null;
+  courseProfile: unknown;
+  students: Array<{
+    enrollmentId: string;
+    studentId: string;
+    student: string;
+    module: string | null;
+    topic: string | null;
+    note: string | null;
+  }>;
+  recentLessons: Array<{
+    id: string;
+    title: string;
+    student: string;
+    scheduledDate: string | null;
+    status: 'draft' | 'prepared' | 'done' | 'cancelled';
+  }>;
+};
+
+export async function getCourseDetails(courseId: string): Promise<CourseDetails | null> {
+  if (!dbConfigured()) return null;
+  const sql = db();
+  const courses = await sql<Array<Omit<CourseDetails, 'students' | 'recentLessons'>>>`
+    SELECT id, title, grade, publisher, drive_folder_id as "driveFolderId", course_profile as "courseProfile"
+    FROM courses WHERE id=${courseId} AND active=true LIMIT 1
+  `;
+  const course = courses[0];
+  if (!course) return null;
+
+  const [students, recentLessons] = await Promise.all([
+    sql<CourseDetails['students']>`
+      SELECT e.id as "enrollmentId", s.id as "studentId", s.display_name as student,
+             sp.module, sp.topic, sp.note
+      FROM enrollments e
+      JOIN students s ON s.id=e.student_id AND s.active=true
+      LEFT JOIN school_positions sp ON sp.enrollment_id=e.id
+      WHERE e.course_id=${courseId} AND e.active=true
+      ORDER BY s.display_name
+    `,
+    sql<CourseDetails['recentLessons']>`
+      SELECT l.id, l.title, s.display_name as student,
+             to_char(l.scheduled_date, 'YYYY-MM-DD') as "scheduledDate", l.status
+      FROM lessons l
+      JOIN enrollments e ON e.id=l.enrollment_id
+      JOIN students s ON s.id=e.student_id
+      WHERE e.course_id=${courseId} AND l.status IN ('prepared', 'done')
+      ORDER BY COALESCE(l.scheduled_date, l.created_at::date) DESC, l.created_at DESC
+      LIMIT 6
+    `,
+  ]);
+
+  return { ...course, students, recentLessons };
+}
+
 export async function getEnrollments() {
   if (!dbConfigured()) return [];
   return db()<Array<{ id: string; studentId: string; student: string; course: string }>>`

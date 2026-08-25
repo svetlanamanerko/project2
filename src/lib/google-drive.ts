@@ -14,7 +14,7 @@ type TokenResponse = {
   error_description?: string;
 };
 
-type DriveFile = {
+export type DriveFolder = {
   id: string;
   name: string;
   webViewLink?: string;
@@ -145,20 +145,20 @@ export async function inspectGoogleDrive(accessToken: string) {
     fields: 'files(id,name,webViewLink)',
     pageSize: '20',
   });
-  const roots = await driveFetch<{ files?: DriveFile[] }>(
+  const roots = await driveFetch<{ files?: DriveFolder[] }>(
     accessToken,
     `https://www.googleapis.com/drive/v3/files?${rootParams.toString()}`,
   );
   const root = roots.files?.[0] || null;
 
-  let childFolders: DriveFile[] = [];
+  let childFolders: DriveFolder[] = [];
   if (root) {
     const childParams = new URLSearchParams({
       q: `'${root.id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
       fields: 'files(id,name,webViewLink)',
       pageSize: '1000',
     });
-    const children = await driveFetch<{ files?: DriveFile[] }>(
+    const children = await driveFetch<{ files?: DriveFolder[] }>(
       accessToken,
       `https://www.googleapis.com/drive/v3/files?${childParams.toString()}`,
     );
@@ -179,8 +179,8 @@ function normalizeCourseTitle(value: string) {
 export async function saveGoogleDriveConnection(params: {
   refreshToken: string;
   accountEmail: string | null;
-  root: DriveFile | null;
-  childFolders: DriveFile[];
+  root: DriveFolder | null;
+  childFolders: DriveFolder[];
 }) {
   if (!dbConfigured()) throw new Error('PostgreSQL не настроен');
   const sql = db();
@@ -215,6 +215,57 @@ export async function saveGoogleDriveConnection(params: {
       }
     }
   });
+}
+
+export async function getGoogleDriveCourseFolders(): Promise<{
+  connected: boolean;
+  folders: DriveFolder[];
+}> {
+  const status = await getGoogleDriveStatus();
+  if (!status.connected) return { connected: false, folders: [] };
+  const accessToken = await refreshGoogleAccessToken();
+  const folders = new Map<string, DriveFolder>();
+  let pageToken: string | undefined;
+
+  do {
+    const params = new URLSearchParams({
+      q: "mimeType = 'application/vnd.google-apps.folder' and trashed = false",
+      fields: 'nextPageToken,files(id,name,webViewLink)',
+      pageSize: '1000',
+      spaces: 'drive',
+      corpora: 'user',
+      includeItemsFromAllDrives: 'true',
+      supportsAllDrives: 'true',
+    });
+    if (pageToken) params.set('pageToken', pageToken);
+    const page = await driveFetch<{ files?: DriveFolder[]; nextPageToken?: string }>(
+      accessToken,
+      `https://www.googleapis.com/drive/v3/files?${params.toString()}`,
+    );
+    for (const folder of page.files || []) folders.set(folder.id, folder);
+    pageToken = page.nextPageToken;
+  } while (pageToken);
+
+  return {
+    connected: true,
+    folders: Array.from(folders.values()).sort((a, b) => a.name.localeCompare(b.name, 'ru')),
+  };
+}
+
+export async function getGoogleDriveFolder(folderId: string): Promise<DriveFolder | null> {
+  const status = await getGoogleDriveStatus();
+  if (!status.connected) return null;
+  const accessToken = await refreshGoogleAccessToken();
+  const params = new URLSearchParams({
+    fields: 'id,name,webViewLink,mimeType,trashed',
+    supportsAllDrives: 'true',
+  });
+  const file = await driveFetch<DriveFolder & { mimeType?: string; trashed?: boolean }>(
+    accessToken,
+    `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(folderId)}?${params.toString()}`,
+  );
+  if (file.mimeType !== 'application/vnd.google-apps.folder' || file.trashed === true) return null;
+  return { id: file.id, name: file.name, webViewLink: file.webViewLink };
 }
 
 export async function getGoogleDriveStatus(): Promise<GoogleDriveStatus> {

@@ -7,6 +7,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { db, dbConfigured } from '@/lib/db';
 import { getAppDateString, isoWeekday } from '@/lib/data';
+import { getGoogleDriveFolder } from '@/lib/google-drive';
 
 function requireDb() {
   if (!dbConfigured()) throw new Error('Сначала подключите PostgreSQL');
@@ -35,12 +36,36 @@ export async function updateCourse(formData: FormData) {
   const courseId = String(formData.get('courseId') || '').trim();
   const title = String(formData.get('title') || '').trim();
   const gradeRaw = String(formData.get('grade') || '').trim();
+  const publisher = String(formData.get('publisher') || '').trim();
   if (!courseId || !title) return;
   const grade = gradeRaw ? Number(gradeRaw) : null;
-  await requireDb()`UPDATE courses SET title=${title}, grade=${grade} WHERE id=${courseId}`;
+  await requireDb()`UPDATE courses SET title=${title}, grade=${grade}, publisher=${publisher || null} WHERE id=${courseId}`;
   revalidatePath('/courses');
   revalidatePath('/students');
   revalidatePath('/');
+  revalidatePath(`/courses/${courseId}`);
+}
+
+export async function updateCourseSource(formData: FormData) {
+  const courseId = String(formData.get('courseId') || '').trim();
+  const folderId = String(formData.get('folderId') || '').trim();
+  if (!courseId || !folderId) return;
+
+  let folder = null;
+  try {
+    folder = await getGoogleDriveFolder(folderId);
+  } catch (error) {
+    console.error('[course-source] Не удалось проверить папку Google Drive:', error);
+  }
+  if (!folder) {
+    redirect(`/courses/${courseId}?source=invalid#source`);
+  }
+
+  await requireDb()`UPDATE courses SET drive_folder_id=${folderId} WHERE id=${courseId} AND active=true`;
+  revalidatePath(`/courses/${courseId}`);
+  revalidatePath('/courses');
+  revalidatePath('/materials');
+  redirect(`/courses/${courseId}?source=saved#source`);
 }
 
 export async function deleteCourse(formData: FormData) {
