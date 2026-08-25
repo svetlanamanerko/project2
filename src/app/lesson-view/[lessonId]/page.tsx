@@ -3,8 +3,7 @@ import { requireSession } from '@/lib/auth';
 import { getLessonDesignData } from '@/lib/design-data';
 import { normalizeDesignStyle } from '@/lib/design-styles';
 import { InteractiveLesson } from '@/app/(private)/lessons/[lessonId]/interactive/InteractiveLesson';
-import { LessonJsonPlayer } from '@/app/(private)/lessons/[lessonId]/interactive/LessonJsonPlayer';
-import { LessonRendererEnhancer } from './LessonRendererEnhancer';
+import { LessonPlayerV2 } from '@/app/(private)/lessons/[lessonId]/interactive/LessonPlayerV2';
 
 export default async function StudentLessonPage({
   params,
@@ -20,21 +19,18 @@ export default async function StudentLessonPage({
   const designStyle = normalizeDesignStyle(query.style);
 
   if (lesson.interactiveLesson) {
-    return <div className="lesson-json-v2 lesson-json-v3" data-design-style={designStyle} data-renderer-version="3">
-      <LessonRendererEnhancer />
-      <LessonJsonPlayer
-        lessonId={lesson.lessonId}
-        student={lesson.student}
-        course={lesson.course}
-        title={lesson.title}
-        sourceLabel={lesson.sourceLabel}
-        lesson={lesson.interactiveLesson}
-        sourceAvailable={lesson.sourceAvailable}
-        designStyle={designStyle}
-        standalone
-        cleanMode={query.clean === '1'}
-      />
-    </div>;
+    return <LessonPlayerV2
+      lessonId={lesson.lessonId}
+      student={lesson.student}
+      course={lesson.course}
+      title={lesson.title}
+      sourceLabel={lesson.sourceLabel}
+      lesson={lesson.interactiveLesson}
+      sourceAvailable={lesson.sourceAvailable}
+      designStyle={designStyle}
+      standalone
+      cleanMode={query.clean === '1'}
+    />;
   }
 
   return <InteractiveLesson
