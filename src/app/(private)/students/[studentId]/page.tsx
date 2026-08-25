@@ -94,7 +94,7 @@ export default async function StudentPage({ params, searchParams }: PageProps<'/
       </div>
       <div className={styles.actions}>
         <Link className={`button ${styles.secondaryButton}`} href={`/students?student=${studentId}#learning-setup`}><BookOpenCheck size={17}/>Настроить обучение</Link>
-        <Link className="button primary" href={`/?student=${studentId}`}><Sparkles size={17}/>Подготовить урок</Link>
+        <Link className="button primary" href={`/students/${studentId}/lesson-preview`}><Sparkles size={17}/>Подготовить урок</Link>
         <Link className={`button ${styles.urgentButton}`} href={`/urgent?student=${studentId}`}><LifeBuoy size={17}/>Срочная помощь</Link>
       </div>
     </header>
@@ -113,7 +113,7 @@ export default async function StudentPage({ params, searchParams }: PageProps<'/
         <div className="panel-title"><h2><BookOpenCheck size={18}/>Обучение сейчас</h2><span className="count-badge">{student.courses.length}</span></div>
         {student.courses.length ? <div className={styles.courseList}>{student.courses.map((course) => <article className={styles.courseCard} key={course.enrollmentId}>
           <strong>{course.title}</strong>
-          <dl><div><dt>Модуль / раздел</dt><dd>{course.module || 'Не указан'}</dd></div><div><dt>Тема школы</dt><dd>{course.topic || 'Не указана'}</dd></div></dl>
+          <dl><div><dt>Фактическая позиция</dt><dd>{course.currentStage || 'Не настроена'}{course.currentLesson ? ` / ${course.currentLesson}` : ''}</dd></div><div><dt>Тема школы</dt><dd>{course.topic || 'Не указана'}</dd></div></dl>{course.completedBeforeTracking&&<p className="muted small">Предыдущие этапы пройдены до начала журнала.</p>}
           <form action={updateStudentCurrentFocus} className={styles.focusForm}>
             <input type="hidden" name="studentId" value={studentId}/><input type="hidden" name="enrollmentId" value={course.enrollmentId}/>
             <label>Что важно сейчас<textarea name="note" rows={2} defaultValue={course.note || ''} placeholder="Короткая текущая задача: диагностика, контрольная, слабое говорение…"/></label>

@@ -6,6 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "test:semantics": "node --experimental-strip-types scripts/check-lesson-semantics.mjs",
+    "test:learning-context": "node --experimental-strip-types scripts/check-learning-context.mjs",
     "start": "next start -H 0.0.0.0 -p ${PORT:-3000}",
     "migrate": "node scripts/migrate.mjs"
   },

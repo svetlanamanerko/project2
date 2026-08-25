@@ -230,7 +230,7 @@ export async function updateCourseSource(formData: FormData) {
     redirect(`/courses/${courseId}?source=invalid#source`);
   }
 
-  await requireDb()`UPDATE courses SET drive_folder_id=${folderId} WHERE id=${courseId} AND active=true`;
+  const sql=requireDb(); await sql.begin(async(tx)=>{await tx`UPDATE courses SET drive_folder_id=${folderId} WHERE id=${courseId} AND active=true`;await tx`UPDATE course_sources SET enabled=false WHERE course_id=${courseId} AND kind='google_drive_root'`;await tx`INSERT INTO course_sources(id,course_id,kind,title,drive_file_id,drive_url,enabled) VALUES(${randomUUID()},${courseId},'google_drive_root',${folder.name},${folder.id},${folder.webViewLink||`https://drive.google.com/drive/folders/${folder.id}`},true) ON CONFLICT(course_id,drive_file_id) WHERE kind='google_drive_root' AND enabled=true AND drive_file_id IS NOT NULL DO UPDATE SET title=EXCLUDED.title,drive_url=EXCLUDED.drive_url,enabled=true`});
   revalidatePath(`/courses/${courseId}`);
   revalidatePath('/courses');
   revalidatePath('/materials');
@@ -410,3 +410,24 @@ export async function createTodayDrafts() {
 export async function createTomorrowDrafts() {
   await createDraftsForDate(getAppDateString(1));
 }
+
+export async function setStudentCoursePosition(formData: FormData) {
+  const enrollmentId=String(formData.get('enrollmentId')||'').trim(); const mapItemId=String(formData.get('mapItemId')||'').trim();
+  const stage=String(formData.get('stage')||'').trim(); const lesson=String(formData.get('lesson')||'').trim(); const note=String(formData.get('note')||'').trim();
+  const previous=formData.get('completedBeforeTracking')==='on'; if(!enrollmentId||!stage)return;
+  const sql=requireDb(); await sql.begin(async(tx)=>{const valid=await tx<Array<{studentId:string;courseId:string;position:number|null}>>`
+    SELECT e.student_id as "studentId",e.course_id as "courseId",m.position FROM enrollments e LEFT JOIN course_map_items m ON m.id=${mapItemId||null} AND m.course_id=e.course_id WHERE e.id=${enrollmentId} AND e.active=true LIMIT 1`;
+    if(!valid.length||mapItemId&&!valid[0].position)return;
+    await tx`INSERT INTO student_course_positions(enrollment_id,current_map_item_id,stage_label,lesson_label,completed_before_tracking,note,updated_at) VALUES(${enrollmentId},${mapItemId||null},${stage},${lesson||null},${previous},${note||null},now()) ON CONFLICT(enrollment_id) DO UPDATE SET current_map_item_id=EXCLUDED.current_map_item_id,stage_label=EXCLUDED.stage_label,lesson_label=EXCLUDED.lesson_label,completed_before_tracking=EXCLUDED.completed_before_tracking,note=EXCLUDED.note,updated_at=now()`;
+    if(mapItemId){await tx`INSERT INTO student_course_stage_statuses(enrollment_id,course_map_item_id,status) VALUES(${enrollmentId},${mapItemId},'in_progress') ON CONFLICT(enrollment_id,course_map_item_id) DO UPDATE SET status='in_progress',updated_at=now()`;if(previous)await tx`INSERT INTO student_course_stage_statuses(enrollment_id,course_map_item_id,status) SELECT ${enrollmentId},id,'completed_before_tracking' FROM course_map_items WHERE course_id=${valid[0].courseId} AND position<${valid[0].position} ON CONFLICT(enrollment_id,course_map_item_id) DO UPDATE SET status='completed_before_tracking',updated_at=now()`;}
+  }); revalidatePath('/students/progress'); revalidatePath('/students'); revalidatePath('/');
+}
+
+export async function addCourseMapItem(formData: FormData) {
+  const courseId=String(formData.get('courseId')||'').trim(),stage=String(formData.get('stage')||'').trim(),lesson=String(formData.get('lesson')||'').trim(),title=String(formData.get('title')||'').trim(); if(!courseId||!stage||!title)return;
+  const position=Number(formData.get('position')); const intent={topic:String(formData.get('topic')||'').trim(),section:String(formData.get('section')||'').trim(),skill:String(formData.get('skill')||'').trim()};
+  await requireDb()`INSERT INTO course_map_items(id,course_id,position,stage_label,lesson_label,title,intent) VALUES(${randomUUID()},${courseId},${Number.isInteger(position)&&position>0?position:1},${stage},${lesson||null},${title},${JSON.stringify(intent)}::jsonb) ON CONFLICT(course_id,position) DO UPDATE SET stage_label=EXCLUDED.stage_label,lesson_label=EXCLUDED.lesson_label,title=EXCLUDED.title,intent=EXCLUDED.intent`;
+  revalidatePath(`/courses/${courseId}`); revalidatePath('/students/progress');
+}
+
+export async function recordLessonHistory(formData:FormData){const enrollmentId=String(formData.get('enrollmentId')||'').trim(),stage=String(formData.get('stage')||'').trim(),lesson=String(formData.get('lesson')||'').trim(),status=String(formData.get('status')||'').trim();if(!enrollmentId||!stage||!['completed','repeat','unfinished'].includes(status))return;const dateRaw=String(formData.get('date')||'');const date=/^\d{4}-\d{2}-\d{2}$/.test(dateRaw)?dateRaw:getAppDateString();const allowed=new Set(['Vocabulary','Grammar','Reading','Listening','Speaking','Writing','Other']);const skills=String(formData.get('skills')||'').split(',').map(x=>x.trim()).filter(x=>allowed.has(x));const note=String(formData.get('teacherNote')||'').trim(),homework=String(formData.get('homework')||'').trim(),next=String(formData.get('nextSteps')||'').trim();const qids=String(formData.get('qids')||'').split(/[\s,;]+/).map(x=>x.trim()).filter(Boolean);const materials=String(formData.get('materials')||'').split(/\r?\n/).map(line=>{const[referenceId,title,url]=line.split('|').map(value=>value.trim());return{referenceId,title:title||referenceId,url};}).filter(item=>item.referenceId&&item.title).slice(0,20);const historyId=randomUUID();const sql=requireDb();await sql.begin(async tx=>{await tx`INSERT INTO lesson_history(id,enrollment_id,occurred_on,stage_label,lesson_label,skills,result_status,teacher_note,homework,next_steps) VALUES(${historyId},${enrollmentId},${date}::date,${stage},${lesson||null},${skills},${status},${note||null},${homework||null},${next||null})`;for(const qid of new Set(qids))await tx`INSERT INTO lesson_history_qids(lesson_history_id,qid) VALUES(${historyId},${qid}) ON CONFLICT DO NOTHING`;for(const material of materials)await tx`INSERT INTO lesson_history_materials(id,lesson_history_id,source_kind,reference_id,title,url) VALUES(${randomUUID()},${historyId},'google_drive',${material.referenceId},${material.title},${material.url||null})`;});revalidatePath('/students/progress');}

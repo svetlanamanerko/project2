@@ -2,11 +2,12 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { BookOpen, FolderOpen, GraduationCap, Home, LifeBuoy, LogOut, Settings, Users } from 'lucide-react';
+import { BookOpen, FolderOpen, GraduationCap, Home, LifeBuoy, LogOut, Settings, Target, Users } from 'lucide-react';
 
 const links = [
   { href: '/', label: 'Сегодня', icon: Home },
   { href: '/students', label: 'Ученики', icon: Users },
+  { href: '/students/progress', label: 'Прогресс', icon: Target },
   { href: '/courses', label: 'Курсы', icon: GraduationCap },
   { href: '/urgent', label: 'Срочная помощь', icon: LifeBuoy },
   { href: '/materials', label: 'Материалы', icon: FolderOpen },

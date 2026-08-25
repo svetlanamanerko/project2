@@ -3,9 +3,10 @@ import { authConfigured } from '@/lib/auth';
 import { dbConfigured } from '@/lib/db';
 import { getGoogleDriveStatus } from '@/lib/google-drive';
 import { KieCheckButton } from './KieCheckButton';
+import { searchOgeTasks } from '@/lib/oge-navigator-client';
 
 export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ drive?: string }> }) {
-  const [drive, params] = await Promise.all([getGoogleDriveStatus(), searchParams]);
+  const [drive, params, navigator] = await Promise.all([getGoogleDriveStatus(), searchParams, searchOgeTasks({ pageSize: 1 })]);
   const kieConfigured = Boolean(process.env.KIE_API_KEY?.trim());
 
   const driveNotice = params.drive === 'connected'
@@ -47,6 +48,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             ? <a className="button primary" style={{marginLeft:'auto'}} href="/api/google/connect">Подключить Google Drive</a>
             : <span className="status status-draft">Нужно настроить</span>}
       </div>
+      <div className="setting-row"><div className="course-icon"><Bot size={20}/></div><div><strong>OGE FIPI Navigator</strong><span>{!navigator.configured?'Добавьте OGE_NAVIGATOR_BASE_URL':navigator.available?'Read-only каталог заданий доступен':'Navigator временно недоступен; остальные источники продолжают работать'}</span></div><span className={`status ${navigator.available?'status-prepared':'status-draft'}`}>{!navigator.configured?'Не настроен':navigator.available?'Подключён':'Ошибка подключения'}</span></div>
     </div></section>
   </>;
 }

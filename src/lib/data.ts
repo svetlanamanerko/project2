@@ -135,6 +135,9 @@ export type StudentDetails = {
     module: string | null;
     topic: string | null;
     note: string | null;
+    currentStage: string | null;
+    currentLesson: string | null;
+    completedBeforeTracking: boolean;
   }>;
   schedule: Array<{
     id: string;
@@ -193,10 +196,11 @@ export async function getStudentDetails(studentId: string): Promise<StudentDetai
 
   const [courses, schedule, recentLessons, observations, recommendations, learningPlan, recycling] = await Promise.all([
     sql<StudentDetails['courses']>`
-      SELECT e.id as "enrollmentId", c.title, sp.module, sp.topic, sp.note
+      SELECT e.id as "enrollmentId", c.title, sp.module, sp.topic, sp.note, p.stage_label as "currentStage", p.lesson_label as "currentLesson", COALESCE(p.completed_before_tracking,false) as "completedBeforeTracking"
       FROM enrollments e
       JOIN courses c ON c.id=e.course_id AND c.active=true
       LEFT JOIN school_positions sp ON sp.enrollment_id=e.id
+      LEFT JOIN student_course_positions p ON p.enrollment_id=e.id
       WHERE e.student_id=${studentId} AND e.active=true
       ORDER BY c.title
     `,
@@ -347,3 +351,13 @@ export async function getMaterials() {
     LIMIT 50
   `;
 }
+
+export async function getStudentProgressRows() {
+  if(!dbConfigured())return [];
+  const sql=db(); const rows=await sql<Array<{enrollmentId:string;studentId:string;student:string;courseId:string;course:string;stage:string|null;lesson:string|null;mapItemId:string|null;completedBeforeTracking:boolean}>>`
+    SELECT e.id as "enrollmentId",s.id as "studentId",s.display_name as student,c.id as "courseId",c.title as course,p.stage_label as stage,p.lesson_label as lesson,p.current_map_item_id as "mapItemId",COALESCE(p.completed_before_tracking,false) as "completedBeforeTracking" FROM enrollments e JOIN students s ON s.id=e.student_id AND s.active=true JOIN courses c ON c.id=e.course_id AND c.active=true LEFT JOIN student_course_positions p ON p.enrollment_id=e.id WHERE e.active=true ORDER BY s.display_name,c.title`;
+  const maps=await sql<Array<{id:string;courseId:string;position:number;stage:string;lesson:string|null;title:string}>>`SELECT id,course_id as "courseId",position,stage_label as stage,lesson_label as lesson,title FROM course_map_items ORDER BY course_id,position`;
+  return rows.map((row)=>({...row,mapItems:maps.filter((item)=>item.courseId===row.courseId)}));
+}
+
+export async function getCourseMapItems(courseId:string){if(!dbConfigured())return [];return db()<Array<{id:string;position:number;stage:string;lesson:string|null;title:string;intent:unknown}>>`SELECT id,position,stage_label as stage,lesson_label as lesson,title,intent FROM course_map_items WHERE course_id=${courseId} ORDER BY position`;}

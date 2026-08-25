@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { hasSession } from '@/lib/auth';
 import { db, dbConfigured } from '@/lib/db';
 import { prepareLessonSource, type PreparedLessonSource } from '@/lib/lesson-source';
+import { buildLessonContext } from '@/lib/lesson-context';
 
 function extractText(payload: unknown) {
   if (!payload || typeof payload !== 'object') return '';
@@ -46,6 +47,7 @@ export async function POST(request: Request) {
 
   const sql = db();
   const contextRows = await sql<Array<{
+    studentId: string;
     student: string;
     grade: number | null;
     studentContext: string | null;
@@ -56,7 +58,7 @@ export async function POST(request: Request) {
     topic: string | null;
     note: string | null;
   }>>`
-    SELECT s.display_name as student, s.school_grade as grade, s.notes as "studentContext", c.title as course,
+    SELECT s.id as "studentId", s.display_name as student, s.school_grade as grade, s.notes as "studentContext", c.title as course,
            c.drive_folder_id as "courseFolderId", c.course_profile as "courseProfile",
            sp.module, sp.topic, sp.note
     FROM enrollments e
@@ -70,6 +72,7 @@ export async function POST(request: Request) {
   if (!context) {
     return NextResponse.json({ ok: false, message: 'Маршрут ученика не найден.' }, { status: 404 });
   }
+  const lessonContext = await buildLessonContext(context.studentId, { enrollmentId });
 
   const [recycling, urgent, skills, observations, learningPlan] = await Promise.all([
     sql<Array<{ label: string; category: string }>>`
@@ -131,6 +134,7 @@ export async function POST(request: Request) {
     `На повторение: ${recycling.length ? recycling.map((x) => `${x.label}${x.category ? ` (${x.category})` : ''}`).join('; ') : 'ничего не отмечено'}`,
     `Срочные запросы: ${urgent.length ? urgent.map((x) => x.description).join(' | ') : 'нет'}`,
     `Профиль навыков: ${skills.length ? skills.map((x) => `${x.skill} ${x.level}/100${x.note ? ` — ${x.note}` : ''}`).join('; ') : 'пока не заполнен'}`,
+    `Отобранный lesson context (Course Map → Progress → Drive/Navigator): ${JSON.stringify(lessonContext)}`,
   ].join('\n');
 
   const sourceRule = preparedSource

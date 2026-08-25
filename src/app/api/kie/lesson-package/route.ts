@@ -5,6 +5,7 @@ import { db, dbConfigured } from '@/lib/db';
 import { prepareLessonSource } from '@/lib/lesson-source';
 import { buildLessonDocx } from '@/lib/lesson-docx';
 import { generatedDocxMimeType, uploadLessonPackageFiles } from '@/lib/generated-materials-drive';
+import { buildLessonContext } from '@/lib/lesson-context';
 
 type PackageDraft = {
   title: string;
@@ -119,6 +120,7 @@ export async function POST(request: Request) {
   const sql = db();
   const date = todayString();
   const contextRows = await sql<Array<{
+    studentId: string;
     student: string;
     grade: number | null;
     course: string;
@@ -130,7 +132,7 @@ export async function POST(request: Request) {
     lessonId: string | null;
     plan: string | null;
   }>>`
-    SELECT s.display_name as student, s.school_grade as grade, c.title as course,
+    SELECT s.id as "studentId", s.display_name as student, s.school_grade as grade, c.title as course,
            c.drive_folder_id as "courseFolderId", c.course_profile as "courseProfile",
            sp.module, sp.topic, sp.note,
            l.id as "lessonId", l.summary as plan
@@ -150,6 +152,7 @@ export async function POST(request: Request) {
   if (!context) {
     return NextResponse.json({ ok: false, message: 'Маршрут ученика не найден.' }, { status: 404 });
   }
+  const lessonContext = await buildLessonContext(context.studentId, { enrollmentId });
   if (!context.courseFolderId) {
     return NextResponse.json({ ok: false, message: 'У курса пока нет связанной папки Google Drive.' }, { status: 409 });
   }
@@ -204,6 +207,7 @@ export async function POST(request: Request) {
     `Повторение: ${recycling.length ? recycling.map((x) => `${x.label} (${x.category})`).join('; ') : 'нет'}`,
     `Срочное: ${urgent.length ? urgent.map((x) => x.description).join(' | ') : 'нет'}`,
     `Навыки: ${skills.length ? skills.map((x) => `${x.skill} ${x.level}/100${x.note ? ` — ${x.note}` : ''}`).join('; ') : 'пока не заполнены'}`,
+    `Отобранный lesson context (Course Map → Progress → Drive/Navigator): ${JSON.stringify(lessonContext)}`,
   ].join('\n');
 
   const prompt = `Ты методист и автор материалов личной «Мастерской уроков» преподавателя английского. К сообщению приложен реальный фрагмент учебника. Собери ПОЛНЫЙ текстовый пакет к индивидуальному уроку на 60 минут, который можно сразу использовать онлайн и распечатать.
