@@ -73,6 +73,8 @@ const typeLabels: Record<LessonExercise['type'], string> = {
   sort: 'SORT',
   open_answer: 'WRITE',
   speaking: 'SPEAKING CHALLENGE',
+  oral_drill: 'ORAL PRACTICE',
+  self_check: 'SELF-CHECK',
   reading: 'READING',
   listening: 'LISTENING',
 };

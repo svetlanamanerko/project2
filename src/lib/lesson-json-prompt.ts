@@ -9,6 +9,8 @@ const allowedTypes = [
   'sort',
   'open_answer',
   'speaking',
+  'oral_drill',
+  'self_check',
   'reading',
 ] as const;
 
@@ -35,6 +37,8 @@ ${rootRule}
 - Повторно используй одну и ту же лексику, ситуацию и grammar target; не добавляй случайные новые темы.
 
 SOURCE / MEDIA
+- MEDIA HONESTY: never write "look at the picture", "point to the picture", "look at the timetable" or "listen" unless the task has resourceId pointing to a suitable real resource.
+- A textbook picture/page dependency must use resourceId="source-book". If no real image/audio exists and source-book is unsuitable, omit the task from interactive JSON.
 - НИКОГДА не выдумывай URL, base64, blob, путь к картинке, mp3 или PDF.
 - Если задание требует видеть реальную страницу/картинку из приложенного учебника, ставь resourceId="source-book". Не добавляй source-book в resources: сервер подключает PDF сам.
 - Если несколько заданий зависят от одного созданного текста/правила, создай ОДИН text/reference resource и используй его resourceId во всех этих заданиях. Не дублируй длинный source в каждом task.
@@ -79,10 +83,25 @@ answer только true, false или ns.
 8) speaking
 {"id":"core-8","type":"speaking","title":"Speaking Challenge","instruction":"Talk about your school day.","prompt":"Tell me about your school day.","usefulLanguage":["My first lesson is...","I usually..."],"starters":["First,...","Then,..."],"sampleAnswer":"My first lesson is Maths. Then I have English."}
 Speaking не маскируй под objective task и не придумывай автоматическую правильность.
+Use speaking ONLY for original communicative production: a personal answer, dialogue, mini-talk, information response, description or story.
+Good speaking: Introduce yourself; talk about your school day; answer about yourself; act out/continue a dialogue; describe; tell.
+NOT speaking: read aloud, say letters/words/sounds, spell, repeat, name pictures, read names, controlled word chain. Those are oral_drill.
+usefulLanguage contains ONLY reusable speech chunks or sentence frames such as "I think...", "My favourite ... is...", "This is my...", "Nice to meet you.", "I usually...".
+Never put vocabulary lists, isolated nouns, letters, transcription, answer banks or cues such as "Ii — ink" in usefulLanguage. Put controlled cues in oral_drill.items.
 
-9) reading
+9) oral_drill
+{"id":"core-9","type":"oral_drill","title":"Read the words aloud","instruction":"Read the words aloud.","mode":"read_aloud","items":[{"id":"o1","label":"Ii — ink"},{"id":"o2","label":"Jj — jam"}]}
+mode is optional and defaults to say. Allowed: say, read_aloud, say_and_spell, repeat, word_chain, quick_name.
+Use for controlled oral practice only. No usefulLanguage, starters, answer key or fake correctness. Add resourceId only when the cues depend on a real source.
+
+10) self_check
+{"id":"homework-5","type":"self_check","title":"Self-check","instruction":"Tick the words you can spell without looking.","items":[{"id":"s1","label":"ink"},{"id":"s2","label":"jam"}]}
+Self-assessment only: no correct answers and no automatic correctness.
+
+11) reading
 {"id":"core-9","type":"reading","title":"Read the text","instruction":"Read the text. Keep it open while you do the next tasks.","resourceId":"reading-1","prompt":"Read for the main idea first."}
 reading всегда требует resourceId. Для текста, созданного специально для урока, создай resource type=text. Для реальной страницы учебника используй source-book.
+reading means reading a SOURCE used as material for this or following tasks. "Read the words aloud" is oral_drill mode=read_aloud, not reading.
 
 RESOURCES
 Созданный текст:
