@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import './lesson-renderer-v2.css';
+import './lesson-renderer-v3.css';
 
 export const metadata: Metadata = {
   title: 'Мастерская уроков',
