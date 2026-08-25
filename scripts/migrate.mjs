@@ -36,9 +36,16 @@ const sql = postgres(url, {
 });
 
 try {
-  const file = path.join(process.cwd(), 'db', 'migrations', '001_init.sql');
-  const migration = await fs.readFile(file, 'utf8');
-  await sql.unsafe(migration);
+  const dir = path.join(process.cwd(), 'db', 'migrations');
+  const files = (await fs.readdir(dir))
+    .filter((name) => /^\d+.*\.sql$/i.test(name))
+    .sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
+
+  for (const name of files) {
+    const migration = await fs.readFile(path.join(dir, name), 'utf8');
+    await sql.unsafe(migration);
+    console.log(`[migrate] ${name} — готово.`);
+  }
   console.log('[migrate] Схема базы готова.');
 } finally {
   await sql.end();

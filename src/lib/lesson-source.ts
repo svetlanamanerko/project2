@@ -31,6 +31,7 @@ export type PreparedLessonSource = {
   sourceFileId: string;
   sourceFileName: string;
   kieFileUrl: string;
+  excerptPath: string;
 };
 
 type DriveItem = {
@@ -104,10 +105,12 @@ function detectLessonReference(values: Array<string | null>) {
     if (!value) continue;
     const lesson = value.match(/\bL\s*0?(\d{1,2})\b/i);
     if (lesson) return normalizeLessonReference(`L${lesson[1]}`);
-    const unit = value.match(/\bUnit\s*(\d{1,2})\b/i);
-    if (unit) return normalizeLessonReference(`unit${unit[1]}`);
+    const unitSection = value.match(/\bUnit\s*(\d{1,2})\s*([A-CАБС])\b/i);
+    if (unitSection) return normalizeLessonReference(`${unitSection[1]}${unitSection[2]}`);
     const moduleSection = value.match(/\bModule\s*(\d{1,2})\s*([A-H])\b/i);
     if (moduleSection) return normalizeLessonReference(`module${moduleSection[1]}${moduleSection[2]}`);
+    const unit = value.match(/\bUnit\s*(\d{1,2})\b/i);
+    if (unit) return normalizeLessonReference(`unit${unit[1]}`);
     const section = value.match(/\b(10|[1-9])\s*([abcабс])\b/i);
     if (section) return normalizeLessonReference(`${section[1]}${section[2]}`);
   }
@@ -120,12 +123,11 @@ function detectExplicitPages(values: Array<string | null>) {
     if (!value) continue;
     const match = value.match(pattern);
     if (!match) continue;
-    let start = Number(match[1]);
-    let end = match[2] ? Number(match[2]) : start;
-    if (!Number.isFinite(start) || !Number.isFinite(end) || start < 1 || end < 1) continue;
-    if (end < start) [start, end] = [end, start];
-    if (end - start > 20) continue;
-    return { start, end };
+    const start = Number(match[1]);
+    const end = Number(match[2] || match[1]);
+    if (Number.isInteger(start) && Number.isInteger(end) && start > 0 && end >= start && end - start <= 20) {
+      return { start, end };
+    }
   }
   return null;
 }
@@ -133,390 +135,261 @@ function detectExplicitPages(values: Array<string | null>) {
 function detectPartHint(values: Array<string | null>) {
   for (const value of values) {
     if (!value) continue;
-    const match = value.match(/\b(?:Part|част[ьи])\s*([12])\b/i);
-    if (match) return `part${match[1]}`;
+    const match = value.match(/(?:part|часть)\s*([12])\b/i);
+    if (match) return match[1];
   }
   return null;
-}
-
-async function driveJson<T>(accessToken: string, url: string): Promise<T> {
-  const response = await fetch(url, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-    cache: 'no-store',
-  });
-  const payload = await response.json().catch(() => null);
-  if (!response.ok) throw new Error(`Google Drive API HTTP ${response.status}`);
-  return payload as T;
-}
-
-async function listChildren(accessToken: string, folderId: string) {
-  const params = new URLSearchParams({
-    q: `'${folderId}' in parents and trashed = false`,
-    fields: 'files(id,name,mimeType,modifiedTime,size,webViewLink)',
-    pageSize: '1000',
-  });
-  const payload = await driveJson<{ files?: DriveItem[] }>(
-    accessToken,
-    `https://www.googleapis.com/drive/v3/files?${params.toString()}`,
-  );
-  return payload.files || [];
-}
-
-async function exportGoogleDocText(accessToken: string, fileId: string) {
-  const mime = encodeURIComponent('text/plain');
-  const response = await fetch(
-    `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}/export?mimeType=${mime}`,
-    { headers: { Authorization: `Bearer ${accessToken}` }, cache: 'no-store' },
-  );
-  if (!response.ok) throw new Error(`Google Docs export HTTP ${response.status}`);
-  return response.text();
-}
-
-function deriveMapTitle(tail: string) {
-  const pageMarker = tail.search(/\b(?:SB\s*)?pp?\.?\s*\d/i);
-  let beforePages = pageMarker >= 0 ? tail.slice(0, pageMarker) : tail;
-  let afterPages = pageMarker >= 0 ? tail.slice(pageMarker) : '';
-
-  beforePages = beforePages
-    .replace(/^\s*(?:10|[1-9])\s*[abcабс]\b\s*/i, '')
-    .replace(/^\s*UNIT\s+\d{1,2}\s*[—–-]?\s*/i, '')
-    .replace(/^\s*Module\s+\d{1,2}\s*[A-H]?(?:\s*[–—-]\s*[A-H])?\s*/i, '')
-    .replace(/^\s*(?:CORE|WRITING\s*&\s*FUNCTION|MASTERY)\b\s*/i, '')
-    .trim();
-
-  beforePages = beforePages
-    .split(/\b(?:Vocabulary|Grammar|Reading|Listening|Speaking|Writing|Functions?|Consolidation|CORE)\s*:/i)[0]
-    .replace(/[.—–-]+$/g, '')
-    .trim();
-
-  if (beforePages.length >= 4) return beforePages.slice(0, 180);
-
-  if (afterPages) {
-    afterPages = afterPages
-      .replace(/^\b(?:SB\s*)?pp?\.?\s*\d{1,3}(?:\s*[–—-]\s*\d{1,3})?\s*[.]?\s*/i, '')
-      .trim();
-    const sentence = afterPages.split(/\.\s+/)[0]?.trim() || '';
-    if (sentence.length >= 4) return sentence.slice(0, 180);
-  }
-  return '';
-}
-
-function addAlias(target: string[], value: string | null) {
-  if (!value) return;
-  const normalized = normalizeLessonReference(value);
-  if (normalized && !target.includes(normalized)) target.push(normalized);
-}
-
-function parseCourseMap(text: string): ParsedCourseMap {
-  const aliases = new Map<string, CourseMapEntry>();
-  const ordered: CourseMapEntry[] = [];
-  let partHint: string | null = null;
-
-  for (const rawLine of text.split(/\r?\n/)) {
-    const line = rawLine.trim();
-    if (!line) continue;
-
-    const partMatches = [...line.matchAll(/\bPart\s*([12])\b/gi)];
-    if (partMatches.length === 1 && (/\bMODULE\b/i.test(line) || !/[+&]/.test(line))) {
-      partHint = `part${partMatches[0][1]}`;
-    }
-
-    const lessonMatch = line.match(/\b(L\d{1,2})\b\s*[—–-]\s*(.+)$/i);
-    if (!lessonMatch) continue;
-
-    const lessonId = normalizeLessonReference(lessonMatch[1]);
-    const tail = lessonMatch[2].trim();
-    const entryAliases: string[] = [lessonId];
-
-    const section = tail.match(/\b(10|[1-9])\s*([abcабс])\b/i);
-    if (section) addAlias(entryAliases, `${section[1]}${section[2]}`);
-
-    const unit = tail.match(/\bUNIT\s+(\d{1,2})\b/i);
-    if (unit) addAlias(entryAliases, `unit${unit[1]}`);
-
-    const moduleSection = tail.match(/\bModule\s+(\d{1,2})\s*([A-H])\b/i);
-    if (moduleSection) {
-      addAlias(entryAliases, `module${moduleSection[1]}${moduleSection[2]}`);
-      addAlias(entryAliases, `${moduleSection[1]}${moduleSection[2]}`);
-    }
-
-    const pageMatches = [...line.matchAll(/\b(?:SB\s*)?pp?\.?\s*(\d{1,3})(?:\s*[–—-]\s*(\d{1,3}))?/gi)];
-    const ranges = pageMatches.map((match) => ({
-      start: Number(match[1]),
-      end: Number(match[2] || match[1]),
-    })).filter((range) => Number.isFinite(range.start) && Number.isFinite(range.end));
-
-    const entry: CourseMapEntry = {
-      lessonId,
-      aliases: entryAliases,
-      title: deriveMapTitle(tail),
-      startPage: ranges.length ? Math.min(...ranges.map((range) => range.start)) : null,
-      endPage: ranges.length ? Math.max(...ranges.map((range) => range.end)) : null,
-      partHint,
-      raw: line,
-    };
-
-    ordered.push(entry);
-    for (const alias of entryAliases) {
-      if (!aliases.has(alias)) aliases.set(alias, entry);
-    }
-  }
-
-  return { aliases, ordered };
-}
-
-function emptyCourseMap(): ParsedCourseMap {
-  return { aliases: new Map<string, CourseMapEntry>(), ordered: [] };
-}
-
-async function getCourseMap(accessToken: string, courseFolderId: string, courseTitle: string) {
-  const rootItems = await listChildren(accessToken, courseFolderId);
-  const mapFolder = rootItems.find((item) => item.mimeType === FOLDER_MIME && normalizeName(item.name).includes('COURSE MAP'));
-  if (!mapFolder) return emptyCourseMap();
-  const mapItems = await listChildren(accessToken, mapFolder.id);
-  const candidates = mapItems.filter((item) => item.mimeType === DOC_MIME && normalizeName(item.name).includes('COURSE MAP'));
-  if (!candidates.length) return emptyCourseMap();
-
-  const courseName = normalizeName(courseTitle);
-  candidates.sort((a, b) => {
-    const score = (item: DriveItem) => {
-      const name = normalizeName(item.name);
-      let value = 0;
-      if (name.includes(courseName)) value += 20;
-      if (name.includes('2026')) value += 4;
-      if (name.includes('ARCHIVE') || name.includes('OLDER') || name.includes('BEFORE')) value -= 50;
-      if (name.includes('AUGUST') || name.includes('BRIDGE')) value -= 10;
-      return value;
-    };
-    return score(b) - score(a);
-  });
-
-  return parseCourseMap(await exportGoogleDocText(accessToken, candidates[0].id));
-}
-
-function bookPartNumber(name: string) {
-  const match = name.match(/\bPart\s*([12])\b/i) || name.match(/\bчаст[ьи]\s*([12])\b/i);
-  return match ? Number(match[1]) : 0;
-}
-
-async function findStudentBooks(accessToken: string, courseFolderId: string) {
-  const rootItems = await listChildren(accessToken, courseFolderId);
-  const sourceFolder = rootItems.find((item) => item.mimeType === FOLDER_MIME && normalizeName(item.name).includes('SOURCE BOOK'));
-  const sourceItems = sourceFolder ? await listChildren(accessToken, sourceFolder.id) : rootItems;
-  const pdfs = sourceItems.filter((item) => item.mimeType === PDF_MIME || item.name.toLocaleLowerCase().endsWith('.pdf'));
-  const primary = pdfs.filter((item) => {
-    const name = normalizeName(item.name);
-    return name.includes('STUDENT') && name.includes('BOOK') && !name.includes('WORKBOOK') && !name.includes('TEACHER');
-  });
-  const fallback = pdfs.filter((item) => {
-    const name = normalizeName(item.name);
-    return !name.includes('TEACHER') && !name.includes('WORKBOOK') && !name.includes('TEST') && !name.includes('GRAMMAR');
-  });
-  const books = primary.length ? primary : fallback;
-  return books.sort((a, b) => {
-    const aDup = normalizeName(a.name).includes('DUP') ? 1 : 0;
-    const bDup = normalizeName(b.name).includes('DUP') ? 1 : 0;
-    if (aDup !== bDup) return aDup - bDup;
-    const partDiff = bookPartNumber(a.name) - bookPartNumber(b.name);
-    if (partDiff) return partDiff;
-    return a.name.localeCompare(b.name, 'en', { numeric: true });
-  });
-}
-
-function booksForPart(books: DriveItem[], partHint: string | null) {
-  if (!partHint) return books;
-  const part = Number(partHint.replace(/\D/g, ''));
-  if (!part) return books;
-  const matching = books.filter((book) => bookPartNumber(book.name) === part);
-  return matching.length ? matching : books;
 }
 
 function configuredPageOffset(courseTitle: string, courseProfile: unknown) {
   if (courseProfile && typeof courseProfile === 'object') {
     const profile = courseProfile as Record<string, unknown>;
-    const raw = profile.sourcePageOffset ?? profile.pageOffset;
-    if (typeof raw === 'number' && Number.isInteger(raw) && raw >= -30 && raw <= 30) return raw;
+    const value = Number(profile.pdfPageOffset ?? profile.pageOffset);
+    if (Number.isInteger(value) && Math.abs(value) <= 20) return value;
   }
-  const known: Record<string, number> = {
-    'SPOTLIGHT 5': 3,
-  };
-  return known[normalizeName(courseTitle)] ?? 0;
+  return /spotlight\s*5/i.test(courseTitle) ? 3 : 0;
 }
 
-async function fileExists(filePath: string, minimumBytes = 1024) {
-  try {
-    const info = await stat(filePath);
-    return info.isFile() && info.size > minimumBytes;
-  } catch {
-    return false;
-  }
+function folderQuery(parentId: string) {
+  return `'${parentId.replace(/'/g, "\\'")}' in parents and trashed=false`;
 }
 
-async function downloadDriveFile(accessToken: string, fileId: string, destination: string) {
-  if (await fileExists(destination)) return destination;
-  await mkdir(path.dirname(destination), { recursive: true });
-  const temporary = `${destination}.part-${process.pid}`;
-  const response = await fetch(
-    `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media`,
-    { headers: { Authorization: `Bearer ${accessToken}` }, cache: 'no-store' },
-  );
-  if (!response.ok || !response.body) throw new Error(`Google Drive download HTTP ${response.status}`);
-  await pipeline(Readable.fromWeb(response.body as never), createWriteStream(temporary));
-  await rename(temporary, destination);
-  return destination;
+async function driveList(accessToken: string, parentId: string) {
+  const params = new URLSearchParams({
+    q: folderQuery(parentId),
+    fields: 'files(id,name,mimeType,modifiedTime,size,webViewLink)',
+    pageSize: '100',
+    orderBy: 'folder,name_natural',
+  });
+  const response = await fetch(`https://www.googleapis.com/drive/v3/files?${params.toString()}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    cache: 'no-store',
+  });
+  if (!response.ok) throw new Error(`Google Drive list HTTP ${response.status}`);
+  const payload = await response.json() as { files?: DriveItem[] };
+  return payload.files || [];
 }
 
-function cachedBookPath(fileId: string) {
-  const dataDir = process.env.DATA_DIR?.trim() || '/data';
-  return path.join(dataDir, 'cache', 'lesson-source', 'books', `${fileId}.pdf`);
+async function driveText(accessToken: string, fileId: string) {
+  const response = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}/export?mimeType=text/plain`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    cache: 'no-store',
+  });
+  if (!response.ok) throw new Error(`Google Drive export HTTP ${response.status}`);
+  return response.text();
 }
 
-async function ensureBookDownloaded(accessToken: string, book: DriveItem) {
-  const sourcePath = cachedBookPath(book.id);
-  await downloadDriveFile(accessToken, book.id, sourcePath);
-  return sourcePath;
+async function findChildFolder(accessToken: string, parentId: string, patterns: RegExp[]) {
+  const items = await driveList(accessToken, parentId);
+  return items.find((item) => item.mimeType === FOLDER_MIME && patterns.some((pattern) => pattern.test(item.name))) || null;
 }
 
-async function getPdfTextPages(sourcePath: string, fileId: string) {
-  const dataDir = process.env.DATA_DIR?.trim() || '/data';
-  const textDir = path.join(dataDir, 'cache', 'lesson-source', 'text');
-  await mkdir(textDir, { recursive: true });
-  const textPath = path.join(textDir, `${fileId}.txt`);
-  if (!(await fileExists(textPath, 50))) {
-    const temporary = `${textPath}.part-${process.pid}`;
-    await execFileAsync('pdftotext', ['-layout', sourcePath, temporary], { timeout: 180_000 });
-    await rename(temporary, textPath);
-  }
-  return (await readFile(textPath, 'utf8')).split('\f');
-}
-
-function titleTokens(title: string) {
-  const stop = new Set(['CORE', 'MODULE', 'UNIT', 'LESSON', 'THE', 'AND', 'WITH', 'FROM', 'ABOUT', 'PART']);
-  return normalizeLoose(title)
-    .split(' ')
-    .filter((token) => token.length >= 4 && !stop.has(token))
-    .slice(0, 10);
-}
-
-function scorePageForEntry(page: string, entry: CourseMapEntry) {
-  const normalized = normalizeLoose(page);
-  if (!normalized) return 0;
-  let score = 0;
-
-  const normalizedTitle = normalizeLoose(entry.title);
-  if (normalizedTitle.length >= 6 && normalized.includes(normalizedTitle)) score += 14;
-  const tokens = titleTokens(entry.title);
-  const matchedTokens = tokens.filter((token) => normalized.includes(token)).length;
-  score += Math.min(10, matchedTokens * 2);
-  if (matchedTokens >= 2) score += 3;
-
-  for (const alias of entry.aliases) {
-    if (/^\d{1,2}[a-c]$/.test(alias)) {
-      const compact = alias.toUpperCase();
-      if (normalized.replace(/\s+/g, '').includes(compact)) score += 7;
-    } else if (/^unit\d+$/.test(alias)) {
-      const number = alias.replace(/\D/g, '');
-      if (normalized.includes(`UNIT ${number}`) || normalized.replace(/\s+/g, '').includes(`UNIT${number}`)) score += 7;
-    } else if (/^module\d+[a-h]$/.test(alias)) {
-      const compact = alias.toUpperCase();
-      if (normalized.replace(/\s+/g, '').includes(compact)) score += 6;
+async function walkFolders(accessToken: string, rootId: string, maxDepth = 2) {
+  const result: Array<{ folder: DriveItem; depth: number }> = [];
+  let frontier = [{ id: rootId, depth: 0 }];
+  while (frontier.length) {
+    const next: typeof frontier = [];
+    for (const current of frontier) {
+      if (current.depth >= maxDepth) continue;
+      const children = await driveList(accessToken, current.id);
+      for (const child of children) {
+        if (child.mimeType !== FOLDER_MIME) continue;
+        result.push({ folder: child, depth: current.depth + 1 });
+        next.push({ id: child.id, depth: current.depth + 1 });
+      }
     }
+    frontier = next;
   }
-
-  return score;
+  return result;
 }
 
-function bestPageForEntry(pages: string[], entry: CourseMapEntry, startIndex = 0) {
-  let bestIndex = -1;
-  let bestScore = 0;
-  for (let index = Math.max(0, startIndex); index < pages.length; index += 1) {
-    const score = scorePageForEntry(pages[index] || '', entry);
-    if (score > bestScore) {
-      bestScore = score;
-      bestIndex = index;
-    }
-  }
-  return { index: bestIndex, score: bestScore };
-}
-
-function scorePrintedPageNumber(page: string, printedPage: number) {
-  const lines = page.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  const edge = [...lines.slice(0, 8), ...lines.slice(-8)];
-  const value = String(printedPage);
-  let score = 0;
-  for (const line of edge) {
-    if (line === value) score = Math.max(score, 12);
-    else if (new RegExp(`^${value}\\b|\\b${value}$`).test(line)) score = Math.max(score, 8);
-  }
-  return score;
-}
-
-function nextMapEntry(courseMap: ParsedCourseMap, entry: CourseMapEntry) {
-  const index = courseMap.ordered.indexOf(entry);
-  if (index < 0) return null;
-  for (let nextIndex = index + 1; nextIndex < courseMap.ordered.length; nextIndex += 1) {
-    const candidate = courseMap.ordered[nextIndex];
-    if (!entry.partHint || !candidate.partHint || candidate.partHint === entry.partHint) return candidate;
+async function findCourseMap(accessToken: string, courseFolderId: string) {
+  const folders = await walkFolders(accessToken, courseFolderId, 2);
+  const mapFolder = folders.find(({ folder }) => /course\s*map|курс.*map|карта/i.test(folder.name))?.folder;
+  const candidateFolders = [mapFolder?.id, courseFolderId].filter(Boolean) as string[];
+  for (const folderId of candidateFolders) {
+    const items = await driveList(accessToken, folderId);
+    const doc = items.find((item) => item.mimeType === DOC_MIME && /course\s*map|карта|curriculum/i.test(item.name));
+    if (doc) return doc;
   }
   return null;
 }
 
-async function locateEntryInBooks(
-  accessToken: string,
-  books: DriveItem[],
-  entry: CourseMapEntry,
-  courseMap: ParsedCourseMap,
-): Promise<LocatedEntry | null> {
+function contextWindow(lines: string[], index: number, before = 3) {
+  return lines.slice(Math.max(0, index - before), index + 1).join(' ');
+}
+
+function pagesFromText(value: string) {
+  const matches = [...value.matchAll(/(?:pp?\.?|стр\.?|pages?)\s*(\d{1,3})(?:\s*[-–—]\s*(\d{1,3}))?/gi)];
+  if (!matches.length) return null;
+  const last = matches[matches.length - 1];
+  const start = Number(last[1]);
+  const end = Number(last[2] || last[1]);
+  if (start < 1 || end < start || end - start > 40) return null;
+  return { start, end };
+}
+
+function parseCourseMap(text: string): ParsedCourseMap {
+  const lines = text.replace(/\r/g, '').split('\n').map((line) => line.trim()).filter(Boolean);
+  const aliases = new Map<string, CourseMapEntry>();
+  const ordered: CourseMapEntry[] = [];
+
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index];
+    const lessonMatch = line.match(/\bL\s*0?(\d{1,2})\b/i);
+    if (!lessonMatch) continue;
+    const lessonId = `l${lessonMatch[1].padStart(2, '0')}`;
+    const windowText = contextWindow(lines, index, 4);
+    const directPages = pagesFromText(line);
+    const inheritedPages = directPages || pagesFromText(windowText);
+    const partHint = detectPartHint([windowText]);
+    const entryAliases = new Set<string>([lessonId]);
+
+    const section = line.match(/\b(10|[1-9])\s*([abcабс])\b/i);
+    if (section) entryAliases.add(normalizeLessonReference(`${section[1]}${section[2]}`));
+    const unit = line.match(/\bUnit\s*(\d{1,2})\b/i);
+    if (unit) entryAliases.add(normalizeLessonReference(`unit${unit[1]}`));
+    const module = line.match(/\bModule\s*(\d{1,2})\s*([A-H])\b/i);
+    if (module) entryAliases.add(normalizeLessonReference(`module${module[1]}${module[2]}`));
+
+    const entry: CourseMapEntry = {
+      lessonId,
+      aliases: [...entryAliases],
+      title: line,
+      startPage: inheritedPages?.start ?? null,
+      endPage: inheritedPages?.end ?? null,
+      partHint,
+      raw: line,
+    };
+    ordered.push(entry);
+    for (const alias of entry.aliases) aliases.set(alias, entry);
+  }
+
+  return { aliases, ordered };
+}
+
+async function getCourseMap(accessToken: string, courseFolderId: string, courseTitle: string) {
+  const doc = await findCourseMap(accessToken, courseFolderId);
+  if (!doc) throw new Error(`COURSE MAP не найден для ${courseTitle}`);
+  return parseCourseMap(await driveText(accessToken, doc.id));
+}
+
+async function findStudentBooks(accessToken: string, courseFolderId: string) {
+  const sourceFolder = await findChildFolder(accessToken, courseFolderId, [/source\s*books/i, /учебник/i, /source/i]);
+  const folders = [sourceFolder?.id, courseFolderId].filter(Boolean) as string[];
+  const result: DriveItem[] = [];
+  for (const folderId of folders) {
+    const items = await driveList(accessToken, folderId);
+    result.push(...items.filter((item) => item.mimeType === PDF_MIME && /student|students|student's|pupil|учебник|sb\b/i.test(item.name)));
+  }
+  const unique = new Map(result.map((item) => [item.id, item]));
+  return [...unique.values()].sort((a, b) => a.name.localeCompare(b.name, 'en', { numeric: true }));
+}
+
+function booksForPart(books: DriveItem[], partHint: string | null) {
+  if (!partHint) return books;
+  const preferred = books.filter((book) => new RegExp(`(?:part|часть)[ _-]*${partHint}\\b`, 'i').test(book.name));
+  return preferred.length ? preferred : books;
+}
+
+function fileExists(filePath: string) {
+  return stat(filePath).then(() => true).catch(() => false);
+}
+
+async function ensureBookDownloaded(accessToken: string, item: DriveItem) {
+  const dataDir = process.env.DATA_DIR?.trim() || '/data';
+  const cacheDir = path.join(dataDir, 'cache', 'lesson-source', 'books');
+  await mkdir(cacheDir, { recursive: true });
+  const target = path.join(cacheDir, `${item.id}.pdf`);
+  if (await fileExists(target)) return target;
+
+  const temporary = `${target}.part-${process.pid}-${Date.now()}`;
+  const response = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(item.id)}?alt=media`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    cache: 'no-store',
+  });
+  if (!response.ok || !response.body) throw new Error(`Google Drive PDF HTTP ${response.status}`);
+  await pipeline(Readable.fromWeb(response.body as never), createWriteStream(temporary));
+  await rename(temporary, target);
+  return target;
+}
+
+async function readPdfPages(filePath: string) {
+  const tempDir = `${filePath}.text-${process.pid}-${Date.now()}`;
+  await mkdir(tempDir, { recursive: true });
+  try {
+    await execFileAsync('pdftotext', ['-layout', filePath, path.join(tempDir, 'book.txt')], { timeout: 180_000 });
+    const text = await readFile(path.join(tempDir, 'book.txt'), 'utf8');
+    return text.split('\f');
+  } finally {
+    await rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
+  }
+}
+
+function scoreEntry(pageText: string, entry: CourseMapEntry) {
+  const haystack = normalizeLoose(pageText);
+  let score = 0;
+  for (const alias of entry.aliases) {
+    const normalized = normalizeLoose(alias);
+    if (normalized && haystack.includes(normalized)) score += 4;
+  }
+  const titleTokens = normalizeLoose(entry.title).split(' ').filter((token) => token.length >= 4 && !/^\d+$/.test(token));
+  for (const token of titleTokens.slice(0, 8)) if (haystack.includes(token)) score += 1;
+  if (entry.startPage != null && new RegExp(`(^|\\s)${entry.startPage}(\\s|$)`).test(pageText)) score += 2;
+  return score;
+}
+
+async function locateEntryInBooks(accessToken: string, books: DriveItem[], entry: CourseMapEntry, map: ParsedCourseMap) {
   const candidates = booksForPart(books, entry.partHint);
+  const index = map.ordered.findIndex((item) => item.lessonId === entry.lessonId);
+  const next = index >= 0 ? map.ordered[index + 1] : null;
   let best: LocatedEntry | null = null;
 
   for (const sourceBook of candidates) {
     const sourcePath = await ensureBookDownloaded(accessToken, sourceBook);
-    const pages = await getPdfTextPages(sourcePath, sourceBook.id);
-    const current = bestPageForEntry(pages, entry);
-    if (current.index < 0 || current.score < 7) continue;
-
-    let lastPhysicalPage: number;
-    if (entry.startPage != null && entry.endPage != null) {
-      lastPhysicalPage = current.index + 1 + Math.max(0, entry.endPage - entry.startPage);
-    } else {
-      const next = nextMapEntry(courseMap, entry);
-      let nextStart = -1;
+    const pages = await readPdfPages(sourcePath);
+    for (let pageIndex = 0; pageIndex < pages.length; pageIndex++) {
+      const score = scoreEntry(pages[pageIndex] || '', entry);
+      if (score < 5 || (best && score <= best.score)) continue;
+      let last = pageIndex + 2;
       if (next) {
-        const locatedNext = bestPageForEntry(pages, next, current.index + 1);
-        if (locatedNext.score >= 7 && locatedNext.index > current.index && locatedNext.index - current.index <= 10) {
-          nextStart = locatedNext.index + 1;
+        for (let nextIndex = pageIndex + 1; nextIndex < Math.min(pages.length, pageIndex + 14); nextIndex++) {
+          if (scoreEntry(pages[nextIndex] || '', next) >= 5) {
+            last = nextIndex;
+            break;
+          }
         }
       }
-      lastPhysicalPage = nextStart > 0 ? nextStart - 1 : current.index + 2;
+      best = {
+        sourceBook,
+        sourcePath,
+        firstPhysicalPage: pageIndex + 1,
+        lastPhysicalPage: Math.min(pages.length, Math.max(pageIndex + 1, last)),
+        score,
+      };
     }
-
-    lastPhysicalPage = Math.min(pages.length, Math.max(current.index + 1, lastPhysicalPage));
-    const located: LocatedEntry = {
-      sourceBook,
-      sourcePath,
-      firstPhysicalPage: current.index + 1,
-      lastPhysicalPage,
-      score: current.score,
-    };
-    if (!best || located.score > best.score) best = located;
   }
-
   return best;
 }
 
-async function locatePrintedPageInBooks(
-  accessToken: string,
-  books: DriveItem[],
-  printedPage: number,
-  partHint: string | null,
-) {
+function scorePrintedPageNumber(pageText: string, printedPage: number) {
+  const lines = pageText.replace(/\r/g, '').split('\n').map((line) => line.trim()).filter(Boolean);
+  let score = 0;
+  const page = String(printedPage);
+  for (const line of [...lines.slice(0, 8), ...lines.slice(-8)]) {
+    if (line === page) score = Math.max(score, 10);
+    else if (new RegExp(`^${page}\\s|\\s${page}$`).test(line)) score = Math.max(score, 8);
+  }
+  return score;
+}
+
+async function locatePrintedPageInBooks(accessToken: string, books: DriveItem[], printedPage: number, partHint: string | null) {
   const candidates = booksForPart(books, partHint);
   let best: { sourceBook: DriveItem; sourcePath: string; physicalPage: number; score: number } | null = null;
   for (const sourceBook of candidates) {
     const sourcePath = await ensureBookDownloaded(accessToken, sourceBook);
-    const pages = await getPdfTextPages(sourcePath, sourceBook.id);
-    for (let index = 0; index < pages.length; index += 1) {
+    const pages = await readPdfPages(sourcePath);
+    for (let index = 0; index < pages.length; index++) {
       const score = scorePrintedPageNumber(pages[index] || '', printedPage);
       if (score >= 8 && (!best || score > best.score)) {
         best = { sourceBook, sourcePath, physicalPage: index + 1, score };
@@ -674,5 +547,6 @@ export async function prepareLessonSource(context: LessonSourceContext, kieApiKe
     sourceFileId: sourceBook.id,
     sourceFileName: sourceBook.name,
     kieFileUrl,
+    excerptPath,
   };
 }

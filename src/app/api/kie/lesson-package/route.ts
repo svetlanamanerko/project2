@@ -5,6 +5,7 @@ import { db, dbConfigured } from '@/lib/db';
 import { prepareLessonSource } from '@/lib/lesson-source';
 import { buildLessonDocx } from '@/lib/lesson-docx';
 import { generatedDocxMimeType, uploadLessonPackageFiles } from '@/lib/generated-materials-drive';
+import { validateLessonJson, type LessonJsonV1 } from '@/lib/lesson-json';
 
 type PackageDraft = {
   title: string;
@@ -13,6 +14,8 @@ type PackageDraft = {
   homework: string;
   reserve: string;
   vocabularyBank: string;
+  interactiveLesson: LessonJsonV1 | null;
+  interactiveIssues: string[];
 };
 
 function todayString() {
@@ -48,6 +51,8 @@ function parsePackage(text: string): PackageDraft | null {
     for (const field of fields) {
       if (typeof parsed[field] !== 'string' || !String(parsed[field]).trim()) return null;
     }
+
+    const interactive = validateLessonJson(parsed.interactiveLesson);
     return {
       title: String(parsed.title).trim(),
       studentWorksheet: String(parsed.studentWorksheet).trim(),
@@ -55,6 +60,8 @@ function parsePackage(text: string): PackageDraft | null {
       homework: String(parsed.homework).trim(),
       reserve: String(parsed.reserve).trim(),
       vocabularyBank: String(parsed.vocabularyBank).trim(),
+      interactiveLesson: interactive.ok ? interactive.lesson : null,
+      interactiveIssues: interactive.ok ? [] : interactive.issues,
     };
   } catch {
     return null;
@@ -67,6 +74,10 @@ function safeFilePart(value: string) {
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 80) || 'Lesson';
+}
+
+function appendWarning(current: string | null, addition: string) {
+  return current ? `${current} ${addition}` : addition;
 }
 
 export async function POST(request: Request) {
@@ -177,7 +188,7 @@ export async function POST(request: Request) {
     `Навыки: ${skills.length ? skills.map((x) => `${x.skill} ${x.level}/100${x.note ? ` — ${x.note}` : ''}`).join('; ') : 'пока не заполнены'}`,
   ].join('\n');
 
-  const prompt = `Ты методист и автор материалов личной «Мастерской уроков» преподавателя английского. К сообщению приложен реальный фрагмент учебника. Собери ПОЛНЫЙ пакет к индивидуальному уроку на 60 минут, который можно сразу использовать онлайн и распечатать.\n\nКОНТЕКСТ:\n${contextText}\n\nПРИНЦИПЫ:\n- учебник — основа урока; внимательно изучи приложенные страницы;\n- не выдумывай содержание страниц и номера упражнений; упоминай номер упражнения только если он реально виден;\n- не перепечатывай длинные тексты учебника: создавай оригинальную дополнительную практику по реально видимой лексике/грамматике/функциям;\n- CORE должен реально заполнять 60 минут, а RESERVE должен быть большим запасом;\n- глубокая отработка лексики, grammar recycling, чтение/аудирование там, где это уместно по источнику, Reverse Translation для подходящего возраста, обязательный speaking transfer и постепенное снятие опор;\n- Student Worksheet НЕ содержит ответов, teacher-only комментариев и оценочных формулировок об уровне ученика;\n- speaking scaffolds должны выглядеть естественно: starters / prompts / sentence frames;\n- Teacher Pack содержит ответы ко ВСЕМ заданиям Student Worksheet, RESERVE и HOMEWORK, listening scripts (если listening создан), примерные ответы speaking, тайминг и короткие teacher notes;\n- HOMEWORK — самостоятельная работа после урока, без ответов;\n- VOCABULARY BANK — в конце, формат: English word/phrase — русский перевод — короткая collocation/example;\n- язык инструкций ученику выбирай по возрасту и уровню так, чтобы материал был доступным;\n- материал должен помогать школьной программе, а не уводить далеко вперёд.\n\nВЕРНИ ТОЛЬКО валидный JSON, без markdown-ограждений и без текста до/после JSON. Все значения — строки. Структура строго такая:\n{\n  "title": "короткое название урока",\n  "studentWorksheet": "полный CORE worksheet на 60 минут; НЕ включай сюда reserve/homework/vocabulary bank",\n  "teacherPack": "ключи, скрипты, тайминг и teacher notes ко всему пакету",\n  "homework": "полноценное домашнее задание",\n  "reserve": "большой запас дополнительных упражнений",\n  "vocabularyBank": "Vocabulary Bank строками: phrase — перевод — example"\n}`;
+  const prompt = `Ты методист и автор материалов личной «Мастерской уроков» преподавателя английского. К сообщению приложен реальный фрагмент учебника. Собери ПОЛНЫЙ пакет к индивидуальному уроку на 60 минут, который можно сразу использовать онлайн и распечатать.\n\nКОНТЕКСТ:\n${contextText}\n\nМЕТОДИКА:\n- учебник — основа урока; внимательно изучи приложенные страницы;\n- не выдумывай содержание страниц и номера упражнений;\n- не перепечатывай длинные тексты учебника: создавай оригинальную дополнительную практику по реально видимой лексике/грамматике/функциям;\n- CORE реально заполняет 60 минут, RESERVE — большой запас;\n- глубокая vocabulary practice + chunks/collocations, grammar recycling, reading/listening где уместно, Reverse Translation для подходящего возраста, обязательный speaking transfer, постепенное снятие опор;\n- Student Worksheet без ответов и teacher-only комментариев;\n- Teacher Pack содержит ответы ко ВСЕМ заданиям, scripts, примерные speaking answers, тайминг и teacher notes;\n- HOMEWORK самостоятельный; VOCABULARY BANK: English phrase — русский перевод — короткий example/collocation;\n- материал помогает школьной программе, а не уводит далеко вперёд.\n\nИНТЕРАКТИВНЫЙ УРОК:\nОдновременно создай interactiveLesson версии 1. Это НЕ HTML, а данные для renderer. Используй только эти type: gap_fill, dropdown, true_false_ns, multiple_choice, matching, sort, open_answer, speaking, reading.\n- gap_fill: text с маркерами {{b1}}, {{b2}}; blanks [{id,answer,options?}]; если есть банк слов — wordBank.\n- dropdown: items [{id,before,after,options,answer}], answer обязательно есть в options.\n- true_false_ns: items [{id,statement,answer}], answer только true/false/ns.\n- multiple_choice: items [{id,question,options:[{id,label}],answerId}].\n- matching: leftItems/rightItems [{id,label}], pairs — объект leftId:rightId. Правая колонка должна быть логично перемешиваема.\n- sort: items [{id,label}], groups [{id,label}], answers — объект itemId:groupId.\n- open_answer: prompts [{id,prompt,sampleAnswer?}].\n- speaking: prompt + usefulLanguage + starters + sampleAnswer.\n- reading: это карточка-инструкция, которая обязательно ссылается resourceId на текстовый resource или на source-book.\nРесурсы resources: только text/reference, которые ты создаёшь сам. Для задания, которому нужно видеть реальные страницы/картинку из приложенного учебника, ставь resourceId: "source-book"; НЕ добавляй source-book в resources — сервер добавит PDF сам. Не создавай listening/audio/image resource без реального URL. Пока аудио-движок не подключён, интерактивный JSON не должен содержать type listening.\nЕсли инструкция говорит sort/match/choose, создавай соответствующий настоящий интерактивный type, а не open_answer. Если говорится Look at the picture по приложенной странице — ставь resourceId source-book.\nУ каждого упражнения уникальный id, title и instruction. Разделы: core, reserve, homework. Не включай ответы в видимый instruction/title, но answer keys обязательно храни в соответствующих полях JSON.\n\nВЕРНИ ТОЛЬКО валидный JSON, без markdown и без текста до/после. Структура верхнего уровня строго такая:\n{\n  "title": "короткое название урока",\n  "studentWorksheet": "полный CORE worksheet на 60 минут; без reserve/homework/vocabulary bank",\n  "teacherPack": "ключи, скрипты, тайминг и teacher notes ко всему пакету",\n  "homework": "полноценное домашнее задание",\n  "reserve": "большой запас дополнительных упражнений",\n  "vocabularyBank": "Vocabulary Bank строками: phrase — перевод — example",\n  "interactiveLesson": {\n    "version": 1,\n    "title": "название",\n    "resources": [],\n    "sections": [\n      {"id":"core","title":"CORE","exercises":[]},\n      {"id":"reserve","title":"RESERVE","exercises":[]},\n      {"id":"homework","title":"HOMEWORK","exercises":[]}\n    ]\n  }\n}`;
 
   try {
     const response = await fetch('https://api.kie.ai/codex/v1/responses', {
@@ -266,17 +277,25 @@ export async function POST(request: Request) {
       warning = 'Урок собран и сохранён в Мастерской, но Word-файлы пока не удалось записать на Google Drive.';
     }
 
+    if (!draft.interactiveLesson) {
+      console.error('[lesson-package] interactiveLesson не прошёл validator:', draft.interactiveIssues);
+      warning = appendWarning(warning, 'Word-пакет готов, но интерактивная JSON-версия не прошла проверку и не будет показана ученику.');
+    }
+
     const creditsRaw = payload && typeof payload === 'object' && 'credits_consumed' in payload
       ? Number((payload as { credits_consumed?: unknown }).credits_consumed) : null;
     const credits = Number.isFinite(creditsRaw) ? creditsRaw : null;
+    const interactiveJson = draft.interactiveLesson ? JSON.stringify(draft.interactiveLesson) : null;
 
     await sql.begin(async (tx) => {
       await tx`
         INSERT INTO lesson_packages (
           lesson_id, title, source_label, student_worksheet, teacher_pack, homework, reserve, vocabulary_bank,
+          interactive_json, source_excerpt_path, interactive_generated_at,
           student_drive_file_id, student_drive_url, teacher_drive_file_id, teacher_drive_url, drive_folder_id, credits, updated_at
         ) VALUES (
           ${lessonId}, ${draft.title}, ${source.label}, ${draft.studentWorksheet}, ${draft.teacherPack}, ${draft.homework}, ${draft.reserve}, ${draft.vocabularyBank},
+          ${interactiveJson}::jsonb, ${source.excerptPath}, ${draft.interactiveLesson ? new Date() : null},
           ${drive?.student.id || null}, ${drive?.student.url || null}, ${drive?.teacher.id || null}, ${drive?.teacher.url || null}, ${drive?.folderId || null}, ${credits}, now()
         )
         ON CONFLICT (lesson_id) DO UPDATE SET
@@ -287,6 +306,9 @@ export async function POST(request: Request) {
           homework=EXCLUDED.homework,
           reserve=EXCLUDED.reserve,
           vocabulary_bank=EXCLUDED.vocabulary_bank,
+          interactive_json=EXCLUDED.interactive_json,
+          source_excerpt_path=EXCLUDED.source_excerpt_path,
+          interactive_generated_at=EXCLUDED.interactive_generated_at,
           student_drive_file_id=EXCLUDED.student_drive_file_id,
           student_drive_url=EXCLUDED.student_drive_url,
           teacher_drive_file_id=EXCLUDED.teacher_drive_file_id,
@@ -315,6 +337,7 @@ export async function POST(request: Request) {
       ok: true,
       warning,
       credits,
+      interactiveReady: !!draft.interactiveLesson,
       package: {
         title: draft.title,
         sourceLabel: source.label,

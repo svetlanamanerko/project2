@@ -3,6 +3,7 @@ import { requireSession } from '@/lib/auth';
 import { getLessonDesignData } from '@/lib/design-data';
 import { normalizeDesignStyle } from '@/lib/design-styles';
 import { InteractiveLesson } from '@/app/(private)/lessons/[lessonId]/interactive/InteractiveLesson';
+import { LessonJsonPlayer } from '@/app/(private)/lessons/[lessonId]/interactive/LessonJsonPlayer';
 
 export default async function StudentLessonPage({
   params,
@@ -16,6 +17,21 @@ export default async function StudentLessonPage({
   const lesson = await getLessonDesignData(lessonId);
   if (!lesson) notFound();
   const designStyle = normalizeDesignStyle(query.style);
+
+  if (lesson.interactiveLesson) {
+    return <LessonJsonPlayer
+      lessonId={lesson.lessonId}
+      student={lesson.student}
+      course={lesson.course}
+      title={lesson.title}
+      sourceLabel={lesson.sourceLabel}
+      lesson={lesson.interactiveLesson}
+      sourceAvailable={lesson.sourceAvailable}
+      designStyle={designStyle}
+      standalone
+      cleanMode={query.clean === '1'}
+    />;
+  }
 
   return <InteractiveLesson
     lessonId={lesson.lessonId}
