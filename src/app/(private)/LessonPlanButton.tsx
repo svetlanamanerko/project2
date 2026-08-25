@@ -1,6 +1,6 @@
 'use client';
 
-import { Check, Copy, Download, ExternalLink, FileText, Sparkles, WandSparkles } from 'lucide-react';
+import { Check, Copy, Download, ExternalLink, FileText, MonitorPlay, Palette, Printer, Sparkles, WandSparkles } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 
@@ -66,10 +66,12 @@ function safeDownloadName(value: string) {
 
 export function LessonPlanButton({
   enrollmentId,
+  lessonId,
   initialPlan,
   initialPackage,
 }: {
   enrollmentId: string;
+  lessonId?: string | null;
   initialPlan?: string | null;
   initialPackage?: LessonPackage | null;
 }) {
@@ -84,6 +86,7 @@ export function LessonPlanButton({
   const [packageWarning, setPackageWarning] = useState('');
   const [packageCredits, setPackageCredits] = useState<number | null>(initialPackage?.credits ?? null);
   const [copiedVocabulary, setCopiedVocabulary] = useState(false);
+  const [designOpen, setDesignOpen] = useState(false);
 
   const vocabularyRows = useMemo(
     () => parseVocabularyBank(lessonPackage?.vocabularyBank || ''),
@@ -118,6 +121,7 @@ export function LessonPlanButton({
     setPackageError('');
     setPackageWarning('');
     setCopiedVocabulary(false);
+    setDesignOpen(false);
     try {
       const response = await fetch('/api/kie/lesson-package', {
         method: 'POST',
@@ -196,6 +200,16 @@ export function LessonPlanButton({
         {(lessonPackage.studentDriveUrl || lessonPackage.teacherDriveUrl) && <div className="package-file-row">
           {lessonPackage.studentDriveUrl && <a className="button package-file-link" href={lessonPackage.studentDriveUrl} target="_blank" rel="noreferrer"><FileText size={15}/>Student Worksheet <ExternalLink size={13}/></a>}
           {lessonPackage.teacherDriveUrl && <a className="button package-file-link" href={lessonPackage.teacherDriveUrl} target="_blank" rel="noreferrer"><FileText size={15}/>Teacher Pack <ExternalLink size={13}/></a>}
+        </div>}
+
+        {lessonId && <div className="design-version-block">
+          <button className="button design-version-button" type="button" onClick={() => setDesignOpen((value) => !value)}>
+            <Palette size={16}/>Создать дизайн-версию
+          </button>
+          {designOpen && <div className="design-version-options">
+            <a className="design-option interactive" href={`/lessons/${lessonId}/interactive`}><MonitorPlay size={18}/><span><strong>Интерактивный урок</strong><small>Карточки, поля ответов и прогресс</small></span></a>
+            <a className="design-option printable" href={`/lessons/${lessonId}/print`}><Printer size={18}/><span><strong>Версия для печати</strong><small>A4 / печать / сохранить PDF</small></span></a>
+          </div>}
         </div>}
 
         <details className="package-section" open><summary>Student Worksheet — CORE</summary><div>{lessonPackage.studentWorksheet}</div></details>
