@@ -13,6 +13,12 @@
 .package-source{padding:9px 11px;border-radius:12px;background:#f3f6ff;color:#56617a;font-size:11.5px;line-height:1.45}
 .package-file-row{display:flex;gap:8px;flex-wrap:wrap}
 .package-file-link{min-height:36px!important;padding:0 12px!important;border:1px solid #d8e0f1!important;background:#fff!important;color:#4d5f9a!important;box-shadow:none!important;font-size:11.5px;text-decoration:none}
+.design-version-block{display:grid;gap:9px;padding:11px;border:1px solid #dedcf7;border-radius:14px;background:linear-gradient(135deg,#fbf9ff,#f7fbff)}
+.design-version-button{justify-self:start;min-height:38px!important;padding:0 14px!important;border:1px solid #ccc8f2!important;background:linear-gradient(110deg,#f3efff,#edf5ff)!important;color:#5d55be!important;box-shadow:none!important;font-size:11.5px!important;font-weight:900!important}
+.design-version-options{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.design-option{display:flex;align-items:center;gap:10px;padding:12px;border:1px solid #e0e3ef;border-radius:12px;background:#fff;color:#425174;text-decoration:none;transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease}
+.design-option:hover{transform:translateY(-1px);border-color:#cdd4ea;box-shadow:0 8px 18px rgba(66,78,130,.07)}
+.design-option>svg{flex:0 0 auto}.design-option span{display:grid;gap:2px}.design-option strong{font-size:11.5px}.design-option small{color:#7a849d;font-size:9.5px}.design-option.interactive{color:#5263c7}.design-option.printable{color:#397765}
 .package-section{border:1px solid #e2e6f1;border-radius:12px;background:#fff;overflow:hidden}
 .package-section summary{cursor:pointer;padding:9px 11px;font-size:11.5px;font-weight:800;color:#58627f;background:#fafbff}
 .package-section>div{white-space:pre-wrap;padding:10px 11px 12px;font-size:12px;line-height:1.6;color:#35405e}
@@ -29,4 +35,4 @@
 .vocabulary-table tbody tr:last-child td{border-bottom:none}
 .vocabulary-table td:first-child{font-weight:800;color:#29385b}
 .vocabulary-raw{white-space:pre-wrap;font-size:12px;line-height:1.6;color:#35405e}
-@media(max-width:640px){.ai-action-row{display:grid}.ai-plan-button,.assemble-lesson-button{width:100%}.package-file-row,.vocabulary-actions{display:grid}.package-file-link,.vocabulary-copy-button,.vocabulary-download-button{width:100%}}
+@media(max-width:640px){.ai-action-row{display:grid}.ai-plan-button,.assemble-lesson-button{width:100%}.package-file-row,.vocabulary-actions{display:grid}.package-file-link,.vocabulary-copy-button,.vocabulary-download-button{width:100%}.design-version-options{grid-template-columns:1fr}.design-version-button{width:100%}}
