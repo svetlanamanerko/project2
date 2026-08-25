@@ -5,9 +5,10 @@ import { createUrgentRequest } from '../actions';
 import { AttachmentInput } from './AttachmentInput';
 import styles from './urgent.module.css';
 
-export default async function UrgentPage({ searchParams }: { searchParams: Promise<{ created?: string; error?: string }> }) {
+export default async function UrgentPage({ searchParams }: { searchParams: Promise<{ created?: string; error?: string; student?: string }> }) {
   const [enrollments, params] = await Promise.all([getEnrollments(), searchParams]);
   const hasDb = dbConfigured();
+  const selectedEnrollmentId = enrollments.find((enrollment) => enrollment.studentId === params.student)?.id || '';
   const errorText = params.error === 'missing'
     ? 'Выберите ученика и опишите, что произошло.'
     : params.error === 'file-too-large'
@@ -22,7 +23,7 @@ export default async function UrgentPage({ searchParams }: { searchParams: Promi
     {errorText && <div className="notice danger">{errorText}</div>}
     <div className="two-col urgent-grid"><section className="panel form-panel"><div className="step"><span>1</span><div><strong>Выберите ученика</strong><p>Система возьмёт его курс и текущий контекст.</p></div></div>
       {!hasDb ? <div className="notice warning">Сначала подключим PostgreSQL.</div> : <form action={createUrgentRequest} className="stack-form">
-        <label>Ученик и курс<select name="enrollmentId" required defaultValue=""><option value="" disabled>Выберите ученика</option>{enrollments.map((e)=><option key={e.id} value={e.id}>{e.student} — {e.course}</option>)}</select></label>
+        <label>Ученик и курс<select name="enrollmentId" required defaultValue={selectedEnrollmentId}><option value="" disabled>Выберите ученика</option>{enrollments.map((e)=><option key={e.id} value={e.id}>{e.student} — {e.course}</option>)}</select></label>
         <label>Что произошло<textarea name="description" rows={5} required placeholder="Например: не понял Present Perfect и слова из школьного ДЗ"/></label>
         <AttachmentInput className={styles.fileUpload}/>
         <button className="button primary" type="submit"><Sparkles size={18}/>Создать срочный запрос</button>

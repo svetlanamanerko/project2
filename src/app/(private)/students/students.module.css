@@ -1,4 +1,8 @@
 .learningSetup{margin-top:18px;background:linear-gradient(145deg,rgba(255,255,255,.96),rgba(246,243,255,.92));}
+.studentLink{display:block;border-radius:16px;cursor:pointer;}
+.studentLink article{transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease;}
+.studentLink:hover article{transform:translateY(-2px);border-color:#cbc6f2;box-shadow:0 10px 24px rgba(77,69,150,.1);}
+.studentLink:focus-visible{outline:3px solid rgba(111,101,246,.28);outline-offset:3px;}
 .setupGrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px 18px;align-items:end;}
 .setupGrid label{display:grid;gap:7px;font-size:12px;font-weight:750;color:#17224a;min-width:0;}
 .setupGrid input,.setupGrid select,.setupGrid textarea{border:1px solid #dfe2f0;background:#fcfcff;border-radius:13px;padding:12px 13px;color:#17224a;outline:none;width:100%;min-height:46px;}

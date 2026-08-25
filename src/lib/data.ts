@@ -28,12 +28,15 @@ export type TodayLesson = {
   package: StoredLessonPackage | null;
 };
 
-function todayString() {
+export function getAppDateString(offsetDays = 0) {
   const zone = process.env.APP_TIMEZONE || 'Europe/Moscow';
-  return new Intl.DateTimeFormat('sv-SE', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  const current = new Intl.DateTimeFormat('sv-SE', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  const date = new Date(`${current}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + offsetDays);
+  return date.toISOString().slice(0, 10);
 }
 
-function isoWeekday(date: string) {
+export function isoWeekday(date: string) {
   const d = new Date(`${date}T12:00:00Z`).getUTCDay();
   return d === 0 ? 7 : d;
 }
@@ -47,9 +50,9 @@ function demoLessons(): TodayLesson[] {
   ];
 }
 
-export async function getTodayLessons() {
-  if (!dbConfigured()) return process.env.DEMO_DATA === 'true' ? demoLessons() : [];
-  const date = todayString();
+export async function getLessonsForDate(date: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error('Некорректная дата уроков');
+  if (!dbConfigured()) return process.env.DEMO_DATA === 'true' && date === getAppDateString() ? demoLessons() : [];
   const weekday = isoWeekday(date);
   const sql = db();
   const rows = await sql<TodayLesson[]>`
@@ -89,6 +92,10 @@ export async function getTodayLessons() {
   return rows;
 }
 
+export async function getTodayLessons() {
+  return getLessonsForDate(getAppDateString());
+}
+
 export async function getRecycling() {
   if (!dbConfigured()) return process.env.DEMO_DATA === 'true' ? ['have got', 'вопросы в Present Simple', 'говорение по теме Character'] : [];
   const rows = await db()<Array<{ label: string }>>`
@@ -101,7 +108,7 @@ export async function getRecycling() {
 
 export async function getUpcomingTasks() {
   if (!dbConfigured()) return process.env.DEMO_DATA === 'true' ? ['контрольная по Spotlight 7', 'ВПР в конце года', 'ОГЭ — следующий блок'] : [];
-  const date = todayString();
+  const date = getAppDateString();
   const rows = await db()<Array<{ title: string }>>`
     SELECT title FROM upcoming_tasks WHERE done = false AND (due_date IS NULL OR due_date >= ${date}::date)
     ORDER BY due_date NULLS LAST LIMIT 5
@@ -116,6 +123,76 @@ export async function getStudents() {
   `;
 }
 
+export type StudentDetails = {
+  id: string;
+  displayName: string;
+  schoolGrade: number | null;
+  notes: string | null;
+  courses: Array<{
+    enrollmentId: string;
+    title: string;
+    module: string | null;
+    topic: string | null;
+    note: string | null;
+  }>;
+  schedule: Array<{
+    id: string;
+    enrollmentId: string;
+    course: string;
+    weekday: number;
+    time: string;
+  }>;
+  recentLessons: Array<{
+    id: string;
+    title: string;
+    course: string;
+    scheduledDate: string | null;
+    status: 'draft' | 'prepared' | 'done' | 'cancelled';
+  }>;
+};
+
+export async function getStudentDetails(studentId: string): Promise<StudentDetails | null> {
+  if (!dbConfigured()) return null;
+  const sql = db();
+  const students = await sql<Array<{ id: string; displayName: string; schoolGrade: number | null; notes: string | null }>>`
+    SELECT id, display_name as "displayName", school_grade as "schoolGrade", notes
+    FROM students WHERE id=${studentId} AND active=true LIMIT 1
+  `;
+  const student = students[0];
+  if (!student) return null;
+
+  const [courses, schedule, recentLessons] = await Promise.all([
+    sql<StudentDetails['courses']>`
+      SELECT e.id as "enrollmentId", c.title, sp.module, sp.topic, sp.note
+      FROM enrollments e
+      JOIN courses c ON c.id=e.course_id AND c.active=true
+      LEFT JOIN school_positions sp ON sp.enrollment_id=e.id
+      WHERE e.student_id=${studentId} AND e.active=true
+      ORDER BY c.title
+    `,
+    sql<StudentDetails['schedule']>`
+      SELECT sr.id, e.id as "enrollmentId", c.title as course, sr.iso_weekday::int as weekday,
+             to_char(sr.start_time, 'HH24:MI') as time
+      FROM schedule_rules sr
+      JOIN enrollments e ON e.id=sr.enrollment_id AND e.active=true
+      JOIN courses c ON c.id=e.course_id AND c.active=true
+      WHERE e.student_id=${studentId} AND sr.active=true
+      ORDER BY sr.iso_weekday, sr.start_time
+    `,
+    sql<StudentDetails['recentLessons']>`
+      SELECT l.id, l.title, c.title as course, to_char(l.scheduled_date, 'YYYY-MM-DD') as "scheduledDate", l.status
+      FROM lessons l
+      JOIN enrollments e ON e.id=l.enrollment_id
+      JOIN courses c ON c.id=e.course_id
+      WHERE e.student_id=${studentId} AND l.status IN ('prepared', 'done')
+      ORDER BY COALESCE(l.scheduled_date, l.created_at::date) DESC, l.created_at DESC
+      LIMIT 5
+    `,
+  ]);
+
+  return { ...student, courses, schedule, recentLessons };
+}
+
 export async function getCourses() {
   if (!dbConfigured()) return [];
   return db()<Array<{ id: string; title: string; grade: number | null }>>`
@@ -125,8 +202,8 @@ export async function getCourses() {
 
 export async function getEnrollments() {
   if (!dbConfigured()) return [];
-  return db()<Array<{ id: string; student: string; course: string }>>`
-    SELECT e.id, s.display_name as student, c.title as course
+  return db()<Array<{ id: string; studentId: string; student: string; course: string }>>`
+    SELECT e.id, s.id as "studentId", s.display_name as student, c.title as course
     FROM enrollments e JOIN students s ON s.id=e.student_id JOIN courses c ON c.id=e.course_id
     WHERE e.active=true ORDER BY s.display_name
   `;

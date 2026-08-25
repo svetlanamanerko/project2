@@ -1,4 +1,5 @@
 import { BookOpenCheck, Clock3, Plus, UserRound } from 'lucide-react';
+import Link from 'next/link';
 import { dbConfigured } from '@/lib/db';
 import { getCourses, getEnrollments, getStudents } from '@/lib/data';
 import { EmptyState } from '@/components/EmptyState';
@@ -15,16 +16,17 @@ const weekdays = [
   ['7', 'Воскресенье'],
 ];
 
-export default async function StudentsPage() {
-  const [students, courses, enrollments] = await Promise.all([getStudents(), getCourses(), getEnrollments()]);
+export default async function StudentsPage({ searchParams }: PageProps<'/students'>) {
+  const [students, courses, enrollments, params] = await Promise.all([getStudents(), getCourses(), getEnrollments(), searchParams]);
   const hasDb = dbConfigured();
+  const selectedStudentId = students.some((student) => student.id === params.student) ? params.student : '';
 
   return <>
     <header className="page-head"><div><p className="eyebrow">Личные маршруты</p><h1>Ученики</h1><p className="muted">Каждый ученик хранит свой прогресс, школьную позицию и очередь повторения.</p></div></header>
 
     <div className="two-col">
       <section className="panel"><div className="panel-title"><h2>Активные ученики</h2><span className="count-badge">{students.length}</span></div>
-        {students.length ? <div className="card-list">{students.map((s) => <article className="person-card" key={s.id}><div className="avatar soft"><UserRound size={20}/></div><div><strong>{s.displayName}</strong><span>{s.schoolGrade ? `${s.schoolGrade} класс` : 'класс не указан'}</span></div></article>)}</div> : <EmptyState title="Пока никого нет" text="Добавьте первого ученика — полный список заранее знать не нужно."/>}
+        {students.length ? <div className="card-list">{students.map((s) => <Link className={styles.studentLink} href={`/students/${s.id}`} key={s.id}><article className="person-card"><div className="avatar soft"><UserRound size={20}/></div><div><strong>{s.displayName}</strong><span>{s.schoolGrade ? `${s.schoolGrade} класс` : 'класс не указан'}</span></div></article></Link>)}</div> : <EmptyState title="Пока никого нет" text="Добавьте первого ученика — полный список заранее знать не нужно."/>}
       </section>
 
       <section className="panel form-panel"><div className="panel-title"><h2><Plus size={18}/>Добавить ученика</h2></div>
@@ -32,11 +34,11 @@ export default async function StudentsPage() {
       </section>
     </div>
 
-    <section className={`panel ${styles.learningSetup}`}>
+    <section className={`panel ${styles.learningSetup}`} id="learning-setup">
       <div className="panel-title"><div><h2><BookOpenCheck size={18}/>Настроить обучение</h2><p className="muted small">Свяжите ученика с учебником, укажите расписание и где сейчас находится школа.</p></div><span className="soft-badge">один раз — потом обновляем по ходу</span></div>
 
       {!hasDb ? <div className="notice warning">Сначала подключим PostgreSQL.</div> : students.length === 0 || courses.length === 0 ? <div className="notice warning">Сначала добавьте хотя бы одного ученика и один курс.</div> : <form action={configureStudentCourse} className={styles.setupGrid}>
-        <label>Ученик<select name="studentId" required defaultValue=""><option value="" disabled>Выберите ученика</option>{students.map((s) => <option value={s.id} key={s.id}>{s.displayName}</option>)}</select></label>
+        <label>Ученик<select name="studentId" required defaultValue={selectedStudentId}><option value="" disabled>Выберите ученика</option>{students.map((s) => <option value={s.id} key={s.id}>{s.displayName}</option>)}</select></label>
         <label>Курс<select name="courseId" required defaultValue=""><option value="" disabled>Выберите курс</option>{courses.map((c) => <option value={c.id} key={c.id}>{c.title}</option>)}</select></label>
         <label>День<select name="weekday" defaultValue=""><option value="">Пока не указывать</option>{weekdays.map(([value,label]) => <option value={value} key={value}>{label}</option>)}</select></label>
         <label>Время<div className={styles.inputIcon}><Clock3 size={16}/><input name="time" type="time"/></div></label>
