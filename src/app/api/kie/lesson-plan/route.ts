@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { hasSession } from '@/lib/auth';
 import { db, dbConfigured } from '@/lib/db';
+import { prepareLessonSource, type PreparedLessonSource } from '@/lib/lesson-source';
 
 function extractText(payload: unknown) {
   if (!payload || typeof payload !== 'object') return '';
@@ -48,11 +49,14 @@ export async function POST(request: Request) {
     student: string;
     grade: number | null;
     course: string;
+    courseFolderId: string | null;
+    courseProfile: unknown;
     module: string | null;
     topic: string | null;
     note: string | null;
   }>>`
     SELECT s.display_name as student, s.school_grade as grade, c.title as course,
+           c.drive_folder_id as "courseFolderId", c.course_profile as "courseProfile",
            sp.module, sp.topic, sp.note
     FROM enrollments e
     JOIN students s ON s.id=e.student_id
@@ -82,27 +86,53 @@ export async function POST(request: Request) {
     ORDER BY level ASC LIMIT 5
   `;
 
+  let preparedSource: PreparedLessonSource | null = null;
+  try {
+    preparedSource = await prepareLessonSource({
+      courseTitle: context.course,
+      courseFolderId: context.courseFolderId,
+      courseProfile: context.courseProfile,
+      module: context.module,
+      topic: context.topic,
+      note: context.note,
+    }, key);
+  } catch (error) {
+    console.error('[lesson-source] Не удалось подготовить страницы учебника:', error);
+  }
+
   const sourceContext = [
     `Ученик: ${context.student}${context.grade ? `, ${context.grade} класс` : ''}`,
     `Курс: ${context.course}`,
     `Модуль/раздел: ${context.module || 'не указан'}`,
     `Тема школы: ${context.topic || 'не указана'}`,
     `Что важно сейчас: ${context.note || 'нет заметки'}`,
+    `Источник Google Drive: ${preparedSource ? preparedSource.label : 'точный фрагмент не найден или не указан'}`,
     `На повторение: ${recycling.length ? recycling.map((x) => `${x.label}${x.category ? ` (${x.category})` : ''}`).join('; ') : 'ничего не отмечено'}`,
     `Срочные запросы: ${urgent.length ? urgent.map((x) => x.description).join(' | ') : 'нет'}`,
     `Профиль навыков: ${skills.length ? skills.map((x) => `${x.skill} ${x.level}/100${x.note ? ` — ${x.note}` : ''}`).join('; ') : 'пока не заполнен'}`,
   ].join('\n');
 
-  const prompt = `Ты методист личной Мастерской уроков преподавателя английского. Составь КОРОТКИЙ ПЛАН ПОДГОТОВКИ к индивидуальному уроку на 60 минут. Это ещё не worksheet.\n\nДАННЫЕ ИЗ БАЗЫ:\n${sourceContext}\n\nЖЁСТКИЕ ПРАВИЛА:\n- используй только данные выше;\n- НЕ выдумывай содержание страниц учебника, номера упражнений, тексты, слова, правила или задания ФИПИ, которых нет в данных;\n- если для точной подготовки нужен учебник/фото/источник, прямо напиши «Нужен источник»;\n- учитывай школьный темп: не предлагай надолго задерживаться на одном материале;\n- обязательно предусмотрите вывод материала в речь;\n- язык ответа — русский, компактно, без длинных объяснений.\n\nФОРМАТ:\nФокус урока: ...\nЦель: ...\nCORE 60 минут:\n1. ...\n2. ...\n3. ...\n4. ...\nSpeaking transfer: ...\nЧто повторить: ...\nRESERVE: ...\nНужен источник: ...`;
+  const sourceRule = preparedSource
+    ? `К сообщению приложен PDF-фрагмент реального учебника (${preparedSource.label}). Изучи именно эти страницы. Можно ссылаться на реально видимые упражнения, тексты, лексику и грамматику, но ничего не додумывай за пределами приложенного фрагмента.`
+    : 'PDF-фрагмент учебника не приложен. Не выдумывай содержание страниц, номера упражнений, тексты или лексику; если они нужны, укажи, что нужен источник.';
+
+  const prompt = `Ты методист личной Мастерской уроков преподавателя английского. Составь КОРОТКИЙ ПЛАН ПОДГОТОВКИ к индивидуальному уроку на 60 минут. Это ещё не worksheet.\n\nДАННЫЕ ИЗ БАЗЫ:\n${sourceContext}\n\nРАБОТА С ИСТОЧНИКОМ:\n${sourceRule}\n\nЖЁСТКИЕ ПРАВИЛА:\n- опирайся на данные базы и приложенный источник, если он есть;\n- НЕ выдумывай упражнения, тексты, слова, правила или задания, которых нет в источнике/данных;\n- учитывай школьный темп: не предлагай надолго задерживаться на одном материале;\n- обязательно предусмотрите вывод материала в речь;\n- язык ответа — русский, компактно, без длинных объяснений.\n\nФОРМАТ:\nИсточник: ${preparedSource ? preparedSource.label : 'не найден'}\nФокус урока: ...\nЦель: ...\nCORE 60 минут:\n1. ...\n2. ...\n3. ...\n4. ...\nSpeaking transfer: ...\nЧто повторить: ...\nRESERVE: ...\nНужен дополнительный источник: ...`;
 
   try {
+    const inputContent: Array<Record<string, string>> = [
+      { type: 'input_text', text: prompt },
+    ];
+    if (preparedSource) {
+      inputContent.push({ type: 'input_file', file_url: preparedSource.kieFileUrl });
+    }
+
     const response = await fetch('https://api.kie.ai/codex/v1/responses', {
       method: 'POST',
       headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'gpt-5-4',
         stream: false,
-        input: [{ role: 'user', content: [{ type: 'input_text', text: prompt }] }],
+        input: [{ role: 'user', content: inputContent }],
         reasoning: { effort: 'low' },
       }),
       cache: 'no-store',
@@ -125,18 +155,24 @@ export async function POST(request: Request) {
       ORDER BY created_at DESC LIMIT 1
     `;
     const lessonId = lessonRows[0]?.id || randomUUID();
+    const sourcePosition = preparedSource?.label || null;
     if (lessonRows.length) {
-      await sql`UPDATE lessons SET summary=${plan} WHERE id=${lessonId}`;
+      await sql`UPDATE lessons SET summary=${plan}, source_position=${sourcePosition} WHERE id=${lessonId}`;
     } else {
       await sql`
-        INSERT INTO lessons (id, enrollment_id, lesson_type, status, title, scheduled_date, summary)
-        VALUES (${lessonId}, ${enrollmentId}, 'planned', 'draft', ${context.course}, ${date}::date, ${plan})
+        INSERT INTO lessons (id, enrollment_id, lesson_type, status, title, scheduled_date, summary, source_position)
+        VALUES (${lessonId}, ${enrollmentId}, 'planned', 'draft', ${context.course}, ${date}::date, ${plan}, ${sourcePosition})
       `;
     }
 
     const credits = payload && typeof payload === 'object' && 'credits_consumed' in payload
       ? Number((payload as { credits_consumed?: unknown }).credits_consumed) : null;
-    return NextResponse.json({ ok: true, plan, credits: Number.isFinite(credits) ? credits : null });
+    return NextResponse.json({
+      ok: true,
+      plan,
+      source: preparedSource?.label || null,
+      credits: Number.isFinite(credits) ? credits : null,
+    });
   } catch (error) {
     console.error('[kie] Не удалось составить AI-план урока:', error);
     return NextResponse.json({ ok: false, message: 'Не удалось связаться с KIE.' }, { status: 502 });
