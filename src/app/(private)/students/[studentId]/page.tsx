@@ -13,6 +13,7 @@ import {
   updateStudentCurrentFocus,
 } from '../../actions';
 import { AdviceSubmitButton } from './AdviceSubmitButton';
+import { SaveStatusButton } from './SaveStatusButton';
 import styles from './student.module.css';
 
 const weekdayNames = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'];
@@ -104,7 +105,7 @@ export default async function StudentPage({ params, searchParams }: PageProps<'/
         <form action={updateStudentContext} className={styles.contextForm}>
           <input type="hidden" name="studentId" value={studentId}/>
           <textarea name="context" rows={4} defaultValue={student.notes || ''} placeholder="Например: раньше занимался английским без экзаменационной цели. В августе решил сдавать ОГЭ. Нужно определить уровень, сильные и слабые стороны и выстроить подготовку."/>
-          <button className={`button ${styles.secondaryButton}`} type="submit">Сохранить контекст</button>
+          <SaveStatusButton className={`button ${styles.secondaryButton}`} idleLabel="Сохранить контекст"/>
         </form>
       </section>
 
@@ -116,7 +117,7 @@ export default async function StudentPage({ params, searchParams }: PageProps<'/
           <form action={updateStudentCurrentFocus} className={styles.focusForm}>
             <input type="hidden" name="studentId" value={studentId}/><input type="hidden" name="enrollmentId" value={course.enrollmentId}/>
             <label>Что важно сейчас<textarea name="note" rows={2} defaultValue={course.note || ''} placeholder="Короткая текущая задача: диагностика, контрольная, слабое говорение…"/></label>
-            <button type="submit">Обновить</button>
+            <SaveStatusButton idleLabel="Обновить"/>
           </form>
         </article>)}</div> : <p className="muted small">Курс пока не настроен.</p>}
       </section>
@@ -136,7 +137,7 @@ export default async function StudentPage({ params, searchParams }: PageProps<'/
           <label>Трудно<textarea name="difficulties" rows={2} placeholder="односложные ответы; путает do/does…"/></label>
           <label>Повторить<textarea name="recycle" rows={2} placeholder={'Past Simple questions\ndo/does'}/><small>По одному пункту на строку или через ;</small></label>
           <label>Комментарий<textarea name="comment" rows={2} placeholder="Любая важная деталь по уроку"/></label>
-          <button className="button primary" type="submit">Сохранить наблюдение</button>
+          <SaveStatusButton className="button primary" idleLabel="Сохранить наблюдение"/>
         </form> : <div className="notice warning">Сначала свяжи ученика хотя бы с одним курсом.</div>}
 
         {student.observations.length > 0 && <div className={styles.timeline}>
@@ -180,11 +181,11 @@ export default async function StudentPage({ params, searchParams }: PageProps<'/
           {student.courses.length > 0 && (latestAdvice.planItems.length > 0 || latestAdvice.recycleItems.length > 0) && <div className={styles.suggestionGrid}>
             <div><h3>Добавить в план обучения</h3>{latestAdvice.planItems.map((item) => <form action={addLearningPlanItem} className={styles.suggestionForm} key={item}>
               <input type="hidden" name="studentId" value={studentId}/><input type="hidden" name="recommendationId" value={latestAdviceRecord.id}/><input type="hidden" name="label" value={item}/>
-              <span>{item}</span><select name="enrollmentId" defaultValue={defaultEnrollmentId}>{student.courses.map((course) => <option key={course.enrollmentId} value={course.enrollmentId}>{course.title}</option>)}</select><button type="submit">В план</button>
+              <span>{item}</span><select name="enrollmentId" defaultValue={defaultEnrollmentId}>{student.courses.map((course) => <option key={course.enrollmentId} value={course.enrollmentId}>{course.title}</option>)}</select><SaveStatusButton idleLabel="В план" pendingLabel="Добавляю…"/>
             </form>)}</div>
             <div><h3>Добавить в повторение</h3>{latestAdvice.recycleItems.map((item) => <form action={addRecyclingItem} className={styles.suggestionForm} key={item}>
               <input type="hidden" name="studentId" value={studentId}/><input type="hidden" name="label" value={item}/>
-              <span>{item}</span><select name="enrollmentId" defaultValue={defaultEnrollmentId}>{student.courses.map((course) => <option key={course.enrollmentId} value={course.enrollmentId}>{course.title}</option>)}</select><button type="submit">Повторять</button>
+              <span>{item}</span><select name="enrollmentId" defaultValue={defaultEnrollmentId}>{student.courses.map((course) => <option key={course.enrollmentId} value={course.enrollmentId}>{course.title}</option>)}</select><SaveStatusButton idleLabel="Повторять" pendingLabel="Добавляю…"/>
             </form>)}</div>
           </div>}
           {student.recommendations.length > 1 && <p className="muted small">В истории сохранено ещё {student.recommendations.length - 1} прошлых анализа.</p>}
