@@ -1,8 +1,6 @@
 import 'server-only';
 import { getGoogleDriveStatus, refreshGoogleAccessToken, type DriveFolder } from '@/lib/google-drive';
 
-const SCHOOL_ROOT_NAME = '01 SCHOOL COURSES';
-
 async function driveFetch<T>(accessToken: string, url: string): Promise<T> {
   const response = await fetch(url, {
     headers: { Authorization: `Bearer ${accessToken}` },
@@ -46,35 +44,49 @@ async function listChildFolders(accessToken: string, parentId: string) {
 
 export async function getGoogleDriveSourceFolders(): Promise<{
   connected: boolean;
+  libraryRoot: DriveFolder | null;
   folders: DriveFolder[];
 }> {
   const status = await getGoogleDriveStatus();
-  if (!status.connected) return { connected: false, folders: [] };
+  if (!status.connected) return { connected: false, libraryRoot: null, folders: [] };
+
+  const libraryRoot = status.rootFolderId
+    ? { id: status.rootFolderId, name: status.rootFolderName || 'Google Drive Library' }
+    : null;
+  if (!libraryRoot) return { connected: true, libraryRoot: null, folders: [] };
 
   const accessToken = await refreshGoogleAccessToken();
-  const root = await driveFetch<{ id: string }>(
-    accessToken,
-    'https://www.googleapis.com/drive/v3/files/root?fields=id&supportsAllDrives=true',
+  const candidates = new Map(
+    (await listChildFolders(accessToken, libraryRoot.id)).map((folder) => [folder.id, folder]),
   );
-
-  const topLevel = await listChildFolders(accessToken, root.id);
-  const schoolRoot = topLevel.find((folder) => folder.name === SCHOOL_ROOT_NAME) || null;
-  const schoolCourses = schoolRoot ? await listChildFolders(accessToken, schoolRoot.id) : [];
-
-  const candidates = new Map<string, DriveFolder>();
-
-  // Верхний уровень нужен для самостоятельных мастер-папок вроде 02 OGE MASTER.
-  // Контейнер 01 SCHOOL COURSES сам по себе источником отдельного курса не является.
-  for (const folder of topLevel) {
-    if (folder.id !== schoolRoot?.id) candidates.set(folder.id, folder);
-  }
-
-  // Для школьных курсов источником является корневая папка самого курса:
-  // Spotlight 4, Spotlight 7, Starlight 9 и т. п., но не их вложенные папки.
-  for (const folder of schoolCourses) candidates.set(folder.id, folder);
 
   return {
     connected: true,
+    libraryRoot,
     folders: Array.from(candidates.values()).sort((a, b) => a.name.localeCompare(b.name, 'ru')),
   };
+}
+
+export async function getGoogleDriveCourseFolder(folderId: string): Promise<DriveFolder | null> {
+  const status = await getGoogleDriveStatus();
+  if (!status.connected || !status.rootFolderId) return null;
+
+  const accessToken = await refreshGoogleAccessToken();
+  const params = new URLSearchParams({
+    fields: 'id,name,webViewLink,mimeType,trashed,parents',
+    supportsAllDrives: 'true',
+  });
+  const folder = await driveFetch<DriveFolder & {
+    mimeType?: string;
+    trashed?: boolean;
+    parents?: string[];
+  }>(accessToken, `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(folderId)}?${params}`);
+
+  if (
+    folder.mimeType !== 'application/vnd.google-apps.folder'
+    || folder.trashed === true
+    || !folder.parents?.includes(status.rootFolderId)
+  ) return null;
+
+  return { id: folder.id, name: folder.name, webViewLink: folder.webViewLink };
 }

@@ -7,7 +7,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { db, dbConfigured } from '@/lib/db';
 import { getAppDateString, isoWeekday } from '@/lib/data';
-import { getGoogleDriveFolder } from '@/lib/google-drive';
+import { getGoogleDriveCourseFolder } from '@/lib/google-drive-source-folders';
 import { generateStudentLearningAdvice } from '@/lib/student-advice';
 
 function requireDb() {
@@ -222,7 +222,7 @@ export async function updateCourseSource(formData: FormData) {
 
   let folder = null;
   try {
-    folder = await getGoogleDriveFolder(folderId);
+    folder = await getGoogleDriveCourseFolder(folderId);
   } catch (error) {
     console.error('[course-source] Не удалось проверить папку Google Drive:', error);
   }
