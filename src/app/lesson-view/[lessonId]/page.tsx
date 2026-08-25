@@ -3,7 +3,7 @@ import { requireSession } from '@/lib/auth';
 import { getLessonDesignData } from '@/lib/design-data';
 import { normalizeDesignStyle } from '@/lib/design-styles';
 import { InteractiveLesson } from '@/app/(private)/lessons/[lessonId]/interactive/InteractiveLesson';
-import { LessonPlayerV2 } from '@/app/(private)/lessons/[lessonId]/interactive/LessonPlayerV2';
+import { LessonPlayerV3 } from '@/app/(private)/lessons/[lessonId]/interactive/LessonPlayerV3';
 
 export default async function StudentLessonPage({
   params,
@@ -19,7 +19,7 @@ export default async function StudentLessonPage({
   const designStyle = normalizeDesignStyle(query.style);
 
   if (lesson.interactiveLesson) {
-    return <LessonPlayerV2
+    return <LessonPlayerV3
       lessonId={lesson.lessonId}
       student={lesson.student}
       course={lesson.course}
