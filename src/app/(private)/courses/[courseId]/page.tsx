@@ -2,7 +2,7 @@ import { ArrowLeft, BookMarked, FolderOpen, Pencil, Sparkles, UserRound } from '
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getCourseDetails } from '@/lib/data';
-import { getGoogleDriveCourseFolders } from '@/lib/google-drive';
+import { getGoogleDriveSourceFolders } from '@/lib/google-drive-source-folders';
 import { updateCourse, updateCourseSource } from '../../actions';
 import { CourseDeleteButton } from '../CourseDeleteButton';
 import styles from './course.module.css';
@@ -18,11 +18,11 @@ export default async function CoursePage({ params, searchParams }: PageProps<'/c
   const course = await getCourseDetails(courseId);
   if (!course) notFound();
 
-  let drive: Awaited<ReturnType<typeof getGoogleDriveCourseFolders>> & { error?: boolean };
+  let drive: Awaited<ReturnType<typeof getGoogleDriveSourceFolders>> & { error?: boolean };
   try {
-    drive = await getGoogleDriveCourseFolders();
+    drive = await getGoogleDriveSourceFolders();
   } catch (error) {
-    console.error('[course-source] Не удалось прочитать папки Google Drive:', error);
+    console.error('[course-source] Не удалось прочитать корневые папки Google Drive:', error);
     drive = { connected: true, folders: [], error: true };
   }
   const sourceFolder = drive.folders.find((folder) => folder.id === course.driveFolderId) || null;
@@ -47,16 +47,16 @@ export default async function CoursePage({ params, searchParams }: PageProps<'/c
     <div className={styles.grid}>
       <section className={`panel ${styles.sourcePanel}`} id="source">
         <div className="panel-title"><h2><FolderOpen size={18}/>Папка-источник Google Drive</h2><span className={`status ${sourceFolder ? 'status-prepared' : 'status-draft'}`}>{sourceFolder ? 'Подключено' : 'Не подключено'}</span></div>
-        {sourceFolder ? <div className={styles.connectedSource}><div><strong>{sourceFolder.name}</strong><span>Материалы курса читаются из этой папки.</span></div>{sourceFolder.webViewLink && <a href={sourceFolder.webViewLink} target="_blank" rel="noreferrer">Открыть в Drive</a>}</div> : course.driveFolderId ? <div className="notice warning">Папка привязана, но сейчас её название не удалось получить из Google Drive.</div> : <p className="muted small">Источник пока не выбран.</p>}
+        {sourceFolder ? <div className={styles.connectedSource}><div><strong>{sourceFolder.name}</strong><span>Сайт читает все материалы внутри этой корневой папки курса.</span></div>{sourceFolder.webViewLink && <a href={sourceFolder.webViewLink} target="_blank" rel="noreferrer">Открыть в Drive</a>}</div> : course.driveFolderId ? <div className="notice warning">Раньше была выбрана вложенная или недоступная папка. Выбери корневую папку курса ниже.</div> : <p className="muted small">Источник пока не выбран. Выбери корневую папку курса целиком, а не COURSE MAP или другую вложенную папку.</p>}
 
-        {!drive.connected ? <div className={styles.sourceAction}><p className="muted small">Сначала подключите существующую интеграцию Google Drive.</p><Link className="button primary" href="/settings">Перейти в настройки</Link></div> : drive.error ? <div className="notice warning">Google Drive подключён, но список папок сейчас недоступен. Попробуйте обновить страницу.</div> : drive.folders.length ? <details className={styles.sourcePicker} open={!course.driveFolderId}>
+        {!drive.connected ? <div className={styles.sourceAction}><p className="muted small">Сначала подключите существующую интеграцию Google Drive.</p><Link className="button primary" href="/settings">Перейти в настройки</Link></div> : drive.error ? <div className="notice warning">Google Drive подключён, но список папок сейчас недоступен. Попробуйте обновить страницу.</div> : drive.folders.length ? <details className={styles.sourcePicker} open={!course.driveFolderId || !sourceFolder}>
           <summary>{course.driveFolderId ? 'Изменить источник' : 'Выбрать папку'}</summary>
           <form action={updateCourseSource}>
             <input type="hidden" name="courseId" value={courseId}/>
-            <label>Папка Google Drive<select name="folderId" required defaultValue={course.driveFolderId || ''}><option value="" disabled>Выберите папку</option>{drive.folders.map((folder) => <option value={folder.id} key={folder.id}>{folder.name}</option>)}</select></label>
+            <label>Корневая папка курса<select name="folderId" required defaultValue={sourceFolder?.id || ''}><option value="" disabled>Выберите папку курса</option>{drive.folders.map((folder) => <option value={folder.id} key={folder.id}>{folder.name}</option>)}</select></label>
             <button className="button primary" type="submit">Сохранить источник</button>
           </form>
-        </details> : <p className="muted small">В подключённом Google Drive пока нет доступных папок.</p>}
+        </details> : <p className="muted small">В подключённом Google Drive пока нет доступных корневых папок курсов.</p>}
       </section>
 
       <section className="panel">
