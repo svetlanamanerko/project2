@@ -1,6 +1,7 @@
 import 'server-only';
 import { db, dbConfigured } from '@/lib/db';
 import { validateLessonJson, type LessonJsonV1 } from '@/lib/lesson-json';
+import { normalizeLessonJson, unwrapLessonJson } from '@/lib/lesson-json-normalize';
 
 export type LessonDesignData = {
   lessonId: string;
@@ -48,7 +49,11 @@ export async function getLessonDesignData(lessonId: string): Promise<LessonDesig
   `;
   const row = rows[0];
   if (!row) return null;
-  const validation = validateLessonJson(row.interactiveJson);
+  const normalized = normalizeLessonJson(unwrapLessonJson(row.interactiveJson), row.title);
+  const validation = validateLessonJson(normalized);
+  if (row.interactiveJson != null && !validation.ok) {
+    console.error(`[lesson-design] interactive_json rejected for lesson ${lessonId}:`, validation.issues);
+  }
   return {
     lessonId: row.lessonId,
     student: row.student,

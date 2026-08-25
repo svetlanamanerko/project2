@@ -14,6 +14,35 @@ function arr(value: unknown) {
   return Array.isArray(value) ? value : [];
 }
 
+function parseJsonText(value: string): unknown {
+  const cleaned = value.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+  try { return JSON.parse(cleaned) as unknown; } catch { return value; }
+}
+
+export function unwrapLessonJson(value: unknown) {
+  let current = value;
+  for (let depth = 0; depth < 6; depth += 1) {
+    if (typeof current === 'string') {
+      const parsed = parseJsonText(current);
+      if (parsed === current) return current;
+      current = parsed;
+      continue;
+    }
+    if (Array.isArray(current)) {
+      if (current.length !== 1) return current;
+      current = current[0];
+      continue;
+    }
+    const row = obj(current);
+    if (!row || 'sections' in row || ('version' in row && 'resources' in row)) return current;
+    const key = ['interactiveLesson', 'interactive_lesson', 'lesson', 'data', 'result', 'json']
+      .find((candidate) => row[candidate] != null);
+    if (!key) return current;
+    current = row[key];
+  }
+  return current;
+}
+
 function strings(value: unknown) {
   return arr(value).map((item) => {
     if (typeof item === 'string' || typeof item === 'number') return String(item).trim();

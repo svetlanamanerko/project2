@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { hasSession } from '@/lib/auth';
 import { db, dbConfigured } from '@/lib/db';
-import { normalizeLessonJson } from '@/lib/lesson-json-normalize';
+import { normalizeLessonJson, unwrapLessonJson } from '@/lib/lesson-json-normalize';
 import { validateLessonJson, type LessonJsonV1 } from '@/lib/lesson-json';
 import { buildInteractiveRepairPrompt } from '@/lib/lesson-json-prompt';
 
@@ -67,38 +67,6 @@ function object(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>
     : null;
-}
-
-function unwrapLessonJson(value: unknown) {
-  let current = value;
-
-  for (let depth = 0; depth < 6; depth += 1) {
-    if (typeof current === 'string') {
-      const parsed = parseJsonLoose(current);
-      if (parsed == null) return current;
-      current = parsed;
-      continue;
-    }
-
-    if (Array.isArray(current)) {
-      if (current.length === 1) {
-        current = current[0];
-        continue;
-      }
-      return current;
-    }
-
-    const row = object(current);
-    if (!row) return current;
-    if ('sections' in row || ('version' in row && 'resources' in row)) return row;
-
-    const wrappers = ['interactiveLesson', 'interactive_lesson', 'lesson', 'data', 'result', 'json'];
-    const wrapper = wrappers.find((key) => key in row && row[key] != null);
-    if (!wrapper) return row;
-    current = row[wrapper];
-  }
-
-  return current;
 }
 
 function findValidLessonJson(payload: unknown, fallbackTitle: string): {
