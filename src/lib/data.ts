@@ -1,5 +1,6 @@
 import 'server-only';
 import { db, dbConfigured } from '@/lib/db';
+import type { StudentAdvice } from '@/lib/student-advice';
 
 export type StoredLessonPackage = {
   title: string;
@@ -149,6 +150,35 @@ export type StudentDetails = {
     scheduledDate: string | null;
     status: 'draft' | 'prepared' | 'done' | 'cancelled';
   }>;
+  observations: Array<{
+    id: string;
+    enrollmentId: string | null;
+    course: string | null;
+    observedOn: string;
+    strengths: string | null;
+    difficulties: string | null;
+    recycle: string | null;
+    comment: string | null;
+  }>;
+  recommendations: Array<{
+    id: string;
+    advice: StudentAdvice;
+    credits: number | null;
+    createdAt: string;
+  }>;
+  learningPlan: Array<{
+    id: string;
+    enrollmentId: string;
+    course: string;
+    label: string;
+  }>;
+  recycling: Array<{
+    id: string;
+    enrollmentId: string;
+    course: string;
+    label: string;
+    category: string;
+  }>;
 };
 
 export async function getStudentDetails(studentId: string): Promise<StudentDetails | null> {
@@ -161,7 +191,7 @@ export async function getStudentDetails(studentId: string): Promise<StudentDetai
   const student = students[0];
   if (!student) return null;
 
-  const [courses, schedule, recentLessons] = await Promise.all([
+  const [courses, schedule, recentLessons, observations, recommendations, learningPlan, recycling] = await Promise.all([
     sql<StudentDetails['courses']>`
       SELECT e.id as "enrollmentId", c.title, sp.module, sp.topic, sp.note
       FROM enrollments e
@@ -188,9 +218,46 @@ export async function getStudentDetails(studentId: string): Promise<StudentDetai
       ORDER BY COALESCE(l.scheduled_date, l.created_at::date) DESC, l.created_at DESC
       LIMIT 5
     `,
+    sql<StudentDetails['observations']>`
+      SELECT o.id, o.enrollment_id as "enrollmentId", c.title as course,
+             to_char(o.observed_on, 'YYYY-MM-DD') as "observedOn",
+             o.strengths, o.difficulties, o.recycle, o.comment
+      FROM student_observations o
+      LEFT JOIN enrollments e ON e.id=o.enrollment_id
+      LEFT JOIN courses c ON c.id=e.course_id
+      WHERE o.student_id=${studentId}
+      ORDER BY o.observed_on DESC, o.created_at DESC
+      LIMIT 12
+    `,
+    sql<StudentDetails['recommendations']>`
+      SELECT id, analysis as advice, credits::float8 as credits,
+             to_char(created_at, 'YYYY-MM-DD HH24:MI') as "createdAt"
+      FROM student_recommendations
+      WHERE student_id=${studentId}
+      ORDER BY created_at DESC
+      LIMIT 3
+    `,
+    sql<StudentDetails['learningPlan']>`
+      SELECT p.id, p.enrollment_id as "enrollmentId", c.title as course, p.label
+      FROM learning_plan_items p
+      JOIN enrollments e ON e.id=p.enrollment_id
+      JOIN courses c ON c.id=e.course_id
+      WHERE e.student_id=${studentId} AND p.status='active'
+      ORDER BY p.created_at ASC
+      LIMIT 30
+    `,
+    sql<StudentDetails['recycling']>`
+      SELECT r.id, r.enrollment_id as "enrollmentId", c.title as course, r.label, r.category
+      FROM recycling_items r
+      JOIN enrollments e ON e.id=r.enrollment_id
+      JOIN courses c ON c.id=e.course_id
+      WHERE e.student_id=${studentId} AND r.status='active'
+      ORDER BY r.priority ASC, r.created_at ASC
+      LIMIT 30
+    `,
   ]);
 
-  return { ...student, courses, schedule, recentLessons };
+  return { ...student, courses, schedule, recentLessons, observations, recommendations, learningPlan, recycling };
 }
 
 export async function getCourses() {
