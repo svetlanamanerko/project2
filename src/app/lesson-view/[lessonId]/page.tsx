@@ -19,18 +19,20 @@ export default async function StudentLessonPage({
   const designStyle = normalizeDesignStyle(query.style);
 
   if (lesson.interactiveLesson) {
-    return <LessonJsonPlayer
-      lessonId={lesson.lessonId}
-      student={lesson.student}
-      course={lesson.course}
-      title={lesson.title}
-      sourceLabel={lesson.sourceLabel}
-      lesson={lesson.interactiveLesson}
-      sourceAvailable={lesson.sourceAvailable}
-      designStyle={designStyle}
-      standalone
-      cleanMode={query.clean === '1'}
-    />;
+    return <div className="lesson-json-v2" data-design-style={designStyle}>
+      <LessonJsonPlayer
+        lessonId={lesson.lessonId}
+        student={lesson.student}
+        course={lesson.course}
+        title={lesson.title}
+        sourceLabel={lesson.sourceLabel}
+        lesson={lesson.interactiveLesson}
+        sourceAvailable={lesson.sourceAvailable}
+        designStyle={designStyle}
+        standalone
+        cleanMode={query.clean === '1'}
+      />
+    </div>;
   }
 
   return <InteractiveLesson
