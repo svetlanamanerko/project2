@@ -3,6 +3,7 @@
 import { Check, Copy, Download, ExternalLink, FileText, MonitorPlay, Palette, Printer, Sparkles, WandSparkles } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
+import { DESIGN_STYLES, type DesignStyleId } from '@/lib/design-styles';
 
 type PlanResponse = {
   ok: boolean;
@@ -87,6 +88,7 @@ export function LessonPlanButton({
   const [packageCredits, setPackageCredits] = useState<number | null>(initialPackage?.credits ?? null);
   const [copiedVocabulary, setCopiedVocabulary] = useState(false);
   const [designOpen, setDesignOpen] = useState(false);
+  const [designStyle, setDesignStyle] = useState<DesignStyleId>('bright-kids');
 
   const vocabularyRows = useMemo(
     () => parseVocabularyBank(lessonPackage?.vocabularyBank || ''),
@@ -206,9 +208,26 @@ export function LessonPlanButton({
           <button className="button design-version-button" type="button" onClick={() => setDesignOpen((value) => !value)}>
             <Palette size={16}/>Создать дизайн-версию
           </button>
-          {designOpen && <div className="design-version-options">
-            <a className="design-option interactive" href={`/lessons/${lessonId}/interactive`}><MonitorPlay size={18}/><span><strong>Интерактивный урок</strong><small>Карточки, поля ответов и прогресс</small></span></a>
-            <a className="design-option printable" href={`/lessons/${lessonId}/print`}><Printer size={18}/><span><strong>Версия для печати</strong><small>A4 / печать / сохранить PDF</small></span></a>
+          {designOpen && <div className="design-picker">
+            <div className="design-picker-head">
+              <strong>Выбери визуальный стиль</strong>
+              <span>Содержание урока не меняется — меняется только подача.</span>
+            </div>
+            <div className="design-style-grid">
+              {DESIGN_STYLES.map((style) => <button
+                key={style.id}
+                type="button"
+                className={`design-style-card ${designStyle === style.id ? 'selected' : ''}`}
+                onClick={() => setDesignStyle(style.id)}
+              >
+                <span className="design-style-icon" aria-hidden="true">{style.icon}</span>
+                <span><strong>{style.title}</strong><small>{style.description}</small></span>
+              </button>)}
+            </div>
+            <div className="design-version-options">
+              <a className="design-option interactive" href={`/lesson-view/${lessonId}?style=${designStyle}`} target="_blank" rel="noreferrer"><MonitorPlay size={18}/><span><strong>Открыть интерактивный урок</strong><small>Чистая страница без кабинета и sidebar</small></span></a>
+              <a className="design-option printable" href={`/lesson-view/${lessonId}/print?style=${designStyle}`} target="_blank" rel="noreferrer"><Printer size={18}/><span><strong>Версия для печати</strong><small>A4 / печать / сохранить PDF</small></span></a>
+            </div>
           </div>}
         </div>}
 

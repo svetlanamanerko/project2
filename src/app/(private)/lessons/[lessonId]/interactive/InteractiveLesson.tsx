@@ -1,9 +1,10 @@
 'use client';
 
 import Link from 'next/link';
-import { BookOpen, Check, ChevronLeft, Circle, MessageSquareText, Printer, RotateCcw, Sparkles } from 'lucide-react';
+import { BookOpen, Check, ChevronLeft, Circle, MessageSquareText, Printer, RotateCcw, Sparkles, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { isSpeakingExercise, parseExercises, parseVocabulary, type DesignExercise } from '@/lib/lesson-design-parser';
+import type { DesignStyleId } from '@/lib/design-styles';
 import styles from './interactive.module.css';
 
 type Props = {
@@ -16,6 +17,8 @@ type Props = {
   reserve: string;
   homework: string;
   vocabularyBank: string;
+  designStyle?: DesignStyleId;
+  standalone?: boolean;
 };
 
 type Tab = 'core' | 'reserve' | 'homework' | 'vocabulary';
@@ -87,7 +90,15 @@ function ExerciseCard({ exercise, completed, onToggle, answers, setAnswer, speak
   </article>;
 }
 
+const themeClass: Record<DesignStyleId, string> = {
+  'bright-kids': styles.themeKids,
+  'teen-study': styles.themeTeen,
+  'reading-magazine': styles.themeReading,
+  'grammar-visual': styles.themeGrammar,
+};
+
 export function InteractiveLesson(props: Props) {
+  const designStyle = props.designStyle || 'teen-study';
   const [tab, setTab] = useState<Tab>('core');
   const [completed, setCompleted] = useState<Set<string>>(new Set());
   const [answers, setAnswers] = useState<Record<string, string>>({});
@@ -122,6 +133,9 @@ export function InteractiveLesson(props: Props) {
   const visible = tab === 'core' ? core : tab === 'reserve' ? reserve : homework;
   const completedCount = allExercises.filter((item) => completed.has(item.id)).length;
   const percent = allExercises.length ? Math.round((completedCount / allExercises.length) * 100) : 0;
+  const printHref = props.standalone
+    ? `/lesson-view/${props.lessonId}/print?style=${designStyle}`
+    : `/lessons/${props.lessonId}/print?style=${designStyle}`;
 
   function toggle(id: string) {
     setCompleted((current) => {
@@ -139,12 +153,14 @@ export function InteractiveLesson(props: Props) {
     localStorage.removeItem(`masterurok:interactive:${props.lessonId}`);
   }
 
-  return <div className={styles.lessonPage}>
+  return <div className={`${styles.lessonPage} ${themeClass[designStyle]}`} data-design-style={designStyle}>
     <div className={styles.topActions}>
-      <Link href="/" className={styles.backLink}><ChevronLeft size={17}/> Сегодня</Link>
+      {props.standalone
+        ? <button type="button" className={styles.backLink} onClick={() => window.close()}><X size={16}/> Закрыть урок</button>
+        : <Link href="/" className={styles.backLink}><ChevronLeft size={17}/> Сегодня</Link>}
       <div className={styles.actionGroup}>
         <button type="button" className={styles.secondaryButton} onClick={reset}><RotateCcw size={15}/> Сбросить</button>
-        <Link href={`/lessons/${props.lessonId}/print`} className={styles.printLink}><Printer size={15}/> Версия для печати</Link>
+        <Link href={printHref} className={styles.printLink} target={props.standalone ? '_blank' : undefined}><Printer size={15}/> Версия для печати</Link>
       </div>
     </div>
 
