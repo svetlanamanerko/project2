@@ -23,6 +23,7 @@ export type DriveCourseMaterials = {
 };
 
 type DriveListResponse = {
+  nextPageToken?: string;
   files?: Array<{
     id?: string;
     name?: string;
@@ -34,21 +35,30 @@ type DriveListResponse = {
 };
 
 async function listFolder(accessToken: string, folderId: string) {
-  const params = new URLSearchParams({
-    q: `'${folderId}' in parents and trashed = false`,
-    fields: 'files(id,name,mimeType,webViewLink,modifiedTime,size)',
-    pageSize: '100',
-  });
-  const response = await fetch(`https://www.googleapis.com/drive/v3/files?${params.toString()}`, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-    cache: 'no-store',
-  });
-  const payload = await response.json().catch(() => null) as DriveListResponse | null;
-  if (!response.ok) {
-    throw new Error(`Google Drive API: ${response.status}`);
-  }
+  const files = new Map<string, NonNullable<DriveListResponse['files']>[number]>();
+  let pageToken: string | undefined;
+  do {
+    const params = new URLSearchParams({
+      q: `'${folderId}' in parents and trashed = false`,
+      fields: 'nextPageToken,files(id,name,mimeType,webViewLink,modifiedTime,size)',
+      pageSize: '1000',
+      includeItemsFromAllDrives: 'true',
+      supportsAllDrives: 'true',
+    });
+    if (pageToken) params.set('pageToken', pageToken);
+    const response = await fetch(`https://www.googleapis.com/drive/v3/files?${params.toString()}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      cache: 'no-store',
+    });
+    const payload = await response.json().catch(() => null) as DriveListResponse | null;
+    if (!response.ok) throw new Error(`Google Drive API: ${response.status}`);
+    for (const file of payload?.files || []) {
+      if (file.id) files.set(file.id, file);
+    }
+    pageToken = payload?.nextPageToken;
+  } while (pageToken);
 
-  return (payload?.files || [])
+  return Array.from(files.values())
     .filter((file) => file.id && file.name && file.mimeType)
     .map((file) => ({
       id: file.id!,
@@ -78,9 +88,17 @@ export async function getDriveCourseMaterials(): Promise<DriveCourseMaterials[]>
 
   const accessToken = await refreshGoogleAccessToken();
   const result: DriveCourseMaterials[] = [];
+  const seenFolderIds = new Set<string>();
+  const seenItemIds = new Set<string>();
 
   for (const course of courses) {
-    const items = await listFolder(accessToken, course.driveFolderId);
+    if (seenFolderIds.has(course.driveFolderId)) continue;
+    seenFolderIds.add(course.driveFolderId);
+    const items = (await listFolder(accessToken, course.driveFolderId)).filter((item) => {
+      if (seenItemIds.has(item.id)) return false;
+      seenItemIds.add(item.id);
+      return true;
+    });
     result.push({
       courseId: course.id,
       courseTitle: course.title,
