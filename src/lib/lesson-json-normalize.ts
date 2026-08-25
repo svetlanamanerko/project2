@@ -62,10 +62,41 @@ function normalizeType(value: unknown): LessonExerciseType | '' {
     sort: 'sort', sorting: 'sort', categorize: 'sort', categorise: 'sort', classification: 'sort',
     open_answer: 'open_answer', open: 'open_answer', short_answer: 'open_answer', write: 'open_answer',
     speaking: 'speaking', speak: 'speaking', oral: 'speaking', dialogue: 'speaking', dialog: 'speaking',
+    oral_drill: 'oral_drill', oraldrill: 'oral_drill', controlled_oral: 'oral_drill', read_aloud: 'oral_drill',
+    self_check: 'self_check', selfcheck: 'self_check', checklist: 'self_check',
     reading: 'reading', read: 'reading',
     listening: 'listening', listen: 'listening',
   };
   return aliases[raw] || '';
+}
+
+const communicativePattern = /\b(introduce yourself|talk about|tell (?:me )?about|answer .*about yourself|act out (?:the )?dialogue|make (?:a )?dialogue|describe|personali[sz]ation)\b/i;
+const oralDrillPattern = /\b(read .* aloud|say (?:the )?(?:letters?|words?|sounds?)|spell\b|repeat\b|read (?:the )?names|name (?:the )?pictures|fast picture naming|quick (?:picture )?naming|last[- ]letter chain|first[- ]letter|last[- ]letter|word chain)\b/i;
+const selfCheckPattern = /\b(self[- ]check|tick the words you can|circle the words you can|check what you can)\b/i;
+const dictationPattern = /\b(?:mini[- ]?)?dictation\b/i;
+
+export function classifyLegacyExerciseType(value: { type?: unknown; title?: unknown; instruction?: unknown; prompt?: unknown; hasAnswerKey?: boolean }) {
+  const current = normalizeType(value.type);
+  const semantics = [value.title, value.instruction, value.prompt].map(str).join(' ');
+  if (!value.hasAnswerKey && selfCheckPattern.test(semantics)) return 'self_check' as const;
+  if (current === 'speaking' && !communicativePattern.test(semantics) && oralDrillPattern.test(semantics)) return 'oral_drill' as const;
+  return current;
+}
+
+function oralMode(value: string) {
+  if (/read .* aloud|read (?:the )?names/i.test(value)) return 'read_aloud' as const;
+  if (/spell/i.test(value)) return 'say_and_spell' as const;
+  if (/repeat/i.test(value)) return 'repeat' as const;
+  if (/chain|first[- ]letter|last[- ]letter/i.test(value)) return 'word_chain' as const;
+  if (/quick|fast|name (?:the )?pictures/i.test(value)) return 'quick_name' as const;
+  return 'say' as const;
+}
+
+function cueItems(row: Record<string, unknown>, prefix: string) {
+  const explicit = idLabelItems(row.items || row.cues || row.cards || row.words, prefix);
+  if (explicit.length) return explicit;
+  return strings(row.usefulLanguage || row.useful_language || row.phrases)
+    .map((label, index) => ({ id: `${prefix}${index + 1}`, label }));
 }
 
 function normalizeTf(value: unknown) {
@@ -133,14 +164,37 @@ function remapAnswerRecord(value: unknown, left: Array<{ id: string; label: stri
   return result;
 }
 
-function normalizeExercise(raw: unknown, sectionId: string, index: number) {
+function normalizeExercise(raw: unknown, sectionId: string, index: number, supportedDictationResources: Set<string>) {
   const row = obj(raw) || {};
-  const type = normalizeType(row.type || row.kind || row.exerciseType || row.exercise_type);
+  const rawType = row.type || row.kind || row.exerciseType || row.exercise_type;
+  const originalType = normalizeType(rawType);
+  let type = classifyLegacyExerciseType({
+    type: rawType,
+    title: row.title || row.name || row.heading,
+    instruction: row.instruction || row.instructions || row.task,
+    prompt: row.prompt || row.question || row.text,
+    hasAnswerKey: row.answer != null || row.answers != null || row.answerKey != null || row.answer_key != null || row.correct != null,
+  });
   const id = str(row.id || row.key) || `${sectionId}-${index + 1}`;
   const title = str(row.title || row.name || row.heading) || `Task ${index + 1}`;
   const instruction = str(row.instruction || row.instructions || row.prompt || row.task) || title;
   const resourceId = str(row.resourceId || row.resource_id || row.sourceId || row.source_id || row.resource || row.source) || undefined;
+  const semantics = `${title} ${instruction} ${str(row.prompt || row.question || row.text)}`;
+  if (dictationPattern.test(semantics) && (!resourceId || !supportedDictationResources.has(resourceId))) return null;
+
+  const migratedItems = type === 'oral_drill' || type === 'self_check'
+    ? cueItems(row, type === 'oral_drill' ? 'o' : 's')
+    : [];
+  if (type !== originalType && !migratedItems.length) type = originalType;
   const base = { id, type, title, instruction, ...(resourceId ? { resourceId } : {}) };
+
+  if (type === 'oral_drill') {
+    return { ...base, mode: oralMode(str(row.mode) || semantics), items: migratedItems.length ? migratedItems : cueItems(row, 'o') };
+  }
+
+  if (type === 'self_check') {
+    return { ...base, items: migratedItems.length ? migratedItems : cueItems(row, 's') };
+  }
 
   if (type === 'gap_fill') {
     const blanks = arr(row.blanks || row.gaps).map((item, blankIndex) => {
@@ -264,6 +318,9 @@ export function normalizeLessonJson(value: unknown, fallbackTitle = 'Interactive
       ...(str(row.alt || row.description) ? { alt: str(row.alt || row.description) } : {}),
     };
   });
+  const supportedDictationResources = new Set(resources
+    .filter((resource) => resource.type === 'audio' || (resource.type === 'reference' && /teacher|dictation cue/i.test(resource.title)))
+    .map((resource) => resource.id));
 
   const rawSections = Array.isArray(root.sections)
     ? root.sections
@@ -273,7 +330,9 @@ export function normalizeLessonJson(value: unknown, fallbackTitle = 'Interactive
     const row = obj(item) || {};
     const rawId = str(row.id || row.key || row.name).toLowerCase();
     const id = rawId.includes('reserve') ? 'reserve' : rawId.includes('home') ? 'homework' : rawId.includes('core') ? 'core' : ['core', 'reserve', 'homework'][sectionIndex] || rawId;
-    const exercises = arr(row.exercises || row.tasks || row.items).map((exercise, exerciseIndex) => normalizeExercise(exercise, id, exerciseIndex)).filter((exercise) => str((exercise as Record<string, unknown>).type));
+    const exercises = arr(row.exercises || row.tasks || row.items)
+      .map((exercise, exerciseIndex) => normalizeExercise(exercise, id, exerciseIndex, supportedDictationResources))
+      .filter((exercise) => !!obj(exercise) && !!str(obj(exercise)?.type));
     return { id, title: str(row.title || row.name) || id.toUpperCase(), exercises };
   }).filter((section) => section.exercises.length > 0);
 

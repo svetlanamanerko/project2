@@ -11,6 +11,8 @@ export type LessonExerciseType =
   | 'sort'
   | 'open_answer'
   | 'speaking'
+  | 'oral_drill'
+  | 'self_check'
   | 'reading'
   | 'listening';
 
@@ -91,6 +93,19 @@ export type SpeakingExercise = ExerciseBase & {
   sampleAnswer?: string;
 };
 
+export type OralDrillMode = 'say' | 'read_aloud' | 'say_and_spell' | 'repeat' | 'word_chain' | 'quick_name';
+
+export type OralDrillExercise = ExerciseBase & {
+  type: 'oral_drill';
+  mode?: OralDrillMode;
+  items: Array<{ id: string; label: string }>;
+};
+
+export type SelfCheckExercise = ExerciseBase & {
+  type: 'self_check';
+  items: Array<{ id: string; label: string }>;
+};
+
 export type ReadingExercise = ExerciseBase & {
   type: 'reading';
   prompt?: string;
@@ -110,6 +125,8 @@ export type LessonExercise =
   | SortExercise
   | OpenAnswerExercise
   | SpeakingExercise
+  | OralDrillExercise
+  | SelfCheckExercise
   | ReadingExercise
   | ListeningExercise;
 
@@ -135,6 +152,8 @@ const exerciseTypes = new Set<LessonExerciseType>([
   'sort',
   'open_answer',
   'speaking',
+  'oral_drill',
+  'self_check',
   'reading',
   'listening',
 ]);
@@ -255,6 +274,17 @@ function validateExercise(value: unknown, issues: string[], path: string) {
 
   if (type === 'speaking' && !text(exercise.prompt)) {
     issues.push(`${path}: speaking без prompt`);
+  }
+
+  if (type === 'oral_drill') {
+    if (!validIdLabelArray(exercise.items)) issues.push(`${path}: oral_drill должен иметь items`);
+    if (exercise.mode != null && !['say', 'read_aloud', 'say_and_spell', 'repeat', 'word_chain', 'quick_name'].includes(text(exercise.mode))) {
+      issues.push(`${path}: неизвестный oral_drill mode`);
+    }
+  }
+
+  if (type === 'self_check' && !validIdLabelArray(exercise.items)) {
+    issues.push(`${path}: self_check должен иметь items`);
   }
 
   if ((type === 'reading' || type === 'listening') && !text(exercise.resourceId)) {
