@@ -53,10 +53,10 @@ export default async function CoursePage({ params, searchParams }: PageProps<'/c
           <summary>{course.driveFolderId ? 'Изменить источник' : 'Выбрать папку'}</summary>
           <form action={updateCourseSource}>
             <input type="hidden" name="courseId" value={courseId}/>
-            <label>Папка внутри 01 SCHOOL COURSES<select name="folderId" required defaultValue={course.driveFolderId || ''}><option value="" disabled>Выберите папку</option>{drive.folders.map((folder) => <option value={folder.id} key={folder.id}>{folder.name}</option>)}</select></label>
+            <label>Папка Google Drive<select name="folderId" required defaultValue={course.driveFolderId || ''}><option value="" disabled>Выберите папку</option>{drive.folders.map((folder) => <option value={folder.id} key={folder.id}>{folder.name}</option>)}</select></label>
             <button className="button primary" type="submit">Сохранить источник</button>
           </form>
-        </details> : <p className="muted small">В папке 01 SCHOOL COURSES пока нет доступных папок курсов.</p>}
+        </details> : <p className="muted small">В подключённом Google Drive пока нет доступных папок.</p>}
       </section>
 
       <section className="panel">

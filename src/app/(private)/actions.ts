@@ -7,7 +7,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { db, dbConfigured } from '@/lib/db';
 import { getAppDateString, isoWeekday } from '@/lib/data';
-import { getGoogleDriveCourseFolders } from '@/lib/google-drive';
+import { getGoogleDriveFolder } from '@/lib/google-drive';
 
 function requireDb() {
   if (!dbConfigured()) throw new Error('Сначала подключите PostgreSQL');
@@ -51,8 +51,13 @@ export async function updateCourseSource(formData: FormData) {
   const folderId = String(formData.get('folderId') || '').trim();
   if (!courseId || !folderId) return;
 
-  const drive = await getGoogleDriveCourseFolders();
-  if (!drive.connected || !drive.folders.some((folder) => folder.id === folderId)) {
+  let folder = null;
+  try {
+    folder = await getGoogleDriveFolder(folderId);
+  } catch (error) {
+    console.error('[course-source] Не удалось проверить папку Google Drive:', error);
+  }
+  if (!folder) {
     redirect(`/courses/${courseId}?source=invalid#source`);
   }
 
