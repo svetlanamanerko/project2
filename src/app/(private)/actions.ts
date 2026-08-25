@@ -8,10 +8,19 @@ import { redirect } from 'next/navigation';
 import { db, dbConfigured } from '@/lib/db';
 import { getAppDateString, isoWeekday } from '@/lib/data';
 import { getGoogleDriveFolder } from '@/lib/google-drive';
+import { generateStudentLearningAdvice } from '@/lib/student-advice';
 
 function requireDb() {
   if (!dbConfigured()) throw new Error('Сначала подключите PostgreSQL');
   return db();
+}
+
+function splitLearningItems(value: string) {
+  return value
+    .split(/\n|;/g)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, 12);
 }
 
 export async function addStudent(formData: FormData) {
@@ -21,6 +30,166 @@ export async function addStudent(formData: FormData) {
   const grade = gradeRaw ? Number(gradeRaw) : null;
   await requireDb()`INSERT INTO students (id, display_name, school_grade) VALUES (${randomUUID()}, ${name}, ${grade})`;
   revalidatePath('/students');
+}
+
+export async function updateStudentContext(formData: FormData) {
+  const studentId = String(formData.get('studentId') || '').trim();
+  const context = String(formData.get('context') || '').trim();
+  if (!studentId) return;
+  await requireDb()`UPDATE students SET notes=${context || null} WHERE id=${studentId} AND active=true`;
+  revalidatePath(`/students/${studentId}`);
+  revalidatePath('/students');
+}
+
+export async function updateStudentCurrentFocus(formData: FormData) {
+  const studentId = String(formData.get('studentId') || '').trim();
+  const enrollmentId = String(formData.get('enrollmentId') || '').trim();
+  const note = String(formData.get('note') || '').trim();
+  if (!studentId || !enrollmentId) return;
+  const sql = requireDb();
+  await sql`
+    INSERT INTO school_positions (enrollment_id, note, updated_at)
+    SELECT e.id, ${note || null}, now()
+    FROM enrollments e
+    WHERE e.id=${enrollmentId} AND e.student_id=${studentId} AND e.active=true
+    ON CONFLICT (enrollment_id) DO UPDATE SET note=EXCLUDED.note, updated_at=now()
+  `;
+  revalidatePath(`/students/${studentId}`);
+  revalidatePath('/');
+}
+
+export async function addStudentObservation(formData: FormData) {
+  const studentId = String(formData.get('studentId') || '').trim();
+  const enrollmentId = String(formData.get('enrollmentId') || '').trim();
+  const observedOnRaw = String(formData.get('observedOn') || '').trim();
+  const strengths = String(formData.get('strengths') || '').trim();
+  const difficulties = String(formData.get('difficulties') || '').trim();
+  const recycle = String(formData.get('recycle') || '').trim();
+  const comment = String(formData.get('comment') || '').trim();
+  if (!studentId || !enrollmentId || (!strengths && !difficulties && !recycle && !comment)) return;
+
+  const observedOn = /^\d{4}-\d{2}-\d{2}$/.test(observedOnRaw) ? observedOnRaw : getAppDateString();
+  const sql = requireDb();
+  const valid = await sql<Array<{ id: string }>>`
+    SELECT id FROM enrollments
+    WHERE id=${enrollmentId} AND student_id=${studentId} AND active=true
+    LIMIT 1
+  `;
+  if (!valid.length) return;
+
+  await sql`
+    INSERT INTO student_observations (id, student_id, enrollment_id, observed_on, strengths, difficulties, recycle, comment)
+    VALUES (${randomUUID()}, ${studentId}, ${enrollmentId}, ${observedOn}::date, ${strengths || null}, ${difficulties || null}, ${recycle || null}, ${comment || null})
+  `;
+
+  for (const label of splitLearningItems(recycle)) {
+    await sql`
+      INSERT INTO recycling_items (id, enrollment_id, label, category, priority, status)
+      SELECT ${randomUUID()}, ${enrollmentId}, ${label}, 'observation', 2, 'active'
+      WHERE NOT EXISTS (
+        SELECT 1 FROM recycling_items
+        WHERE enrollment_id=${enrollmentId} AND status='active' AND lower(label)=lower(${label})
+      )
+    `;
+  }
+
+  revalidatePath(`/students/${studentId}`);
+  revalidatePath('/');
+}
+
+export async function generateStudentAdviceAction(formData: FormData) {
+  const studentId = String(formData.get('studentId') || '').trim();
+  if (!studentId) return;
+  try {
+    const { advice, credits } = await generateStudentLearningAdvice(studentId);
+    await requireDb()`
+      INSERT INTO student_recommendations (id, student_id, analysis, credits)
+      VALUES (${randomUUID()}, ${studentId}, ${JSON.stringify(advice)}::jsonb, ${credits})
+    `;
+  } catch (error) {
+    console.error('[student-advice] Не удалось построить рекомендации:', error);
+    redirect(`/students/${studentId}?advice=error#recommendations`);
+  }
+  revalidatePath(`/students/${studentId}`);
+  redirect(`/students/${studentId}?advice=ready#recommendations`);
+}
+
+export async function addLearningPlanItem(formData: FormData) {
+  const studentId = String(formData.get('studentId') || '').trim();
+  const enrollmentId = String(formData.get('enrollmentId') || '').trim();
+  const label = String(formData.get('label') || '').trim();
+  const recommendationId = String(formData.get('recommendationId') || '').trim();
+  if (!studentId || !enrollmentId || !label) return;
+  const sql = requireDb();
+  const valid = await sql<Array<{ id: string }>>`
+    SELECT id FROM enrollments WHERE id=${enrollmentId} AND student_id=${studentId} AND active=true LIMIT 1
+  `;
+  if (!valid.length) return;
+  let sourceRecommendationId: string | null = null;
+  if (recommendationId) {
+    const recommendation = await sql<Array<{ id: string }>>`
+      SELECT id FROM student_recommendations WHERE id=${recommendationId} AND student_id=${studentId} LIMIT 1
+    `;
+    sourceRecommendationId = recommendation[0]?.id || null;
+  }
+  await sql`
+    INSERT INTO learning_plan_items (id, enrollment_id, label, status, source_recommendation_id)
+    SELECT ${randomUUID()}, ${enrollmentId}, ${label}, 'active', ${sourceRecommendationId}
+    WHERE NOT EXISTS (
+      SELECT 1 FROM learning_plan_items
+      WHERE enrollment_id=${enrollmentId} AND status='active' AND lower(label)=lower(${label})
+    )
+  `;
+  revalidatePath(`/students/${studentId}`);
+}
+
+export async function addRecyclingItem(formData: FormData) {
+  const studentId = String(formData.get('studentId') || '').trim();
+  const enrollmentId = String(formData.get('enrollmentId') || '').trim();
+  const label = String(formData.get('label') || '').trim();
+  if (!studentId || !enrollmentId || !label) return;
+  const sql = requireDb();
+  const valid = await sql<Array<{ id: string }>>`
+    SELECT id FROM enrollments WHERE id=${enrollmentId} AND student_id=${studentId} AND active=true LIMIT 1
+  `;
+  if (!valid.length) return;
+  await sql`
+    INSERT INTO recycling_items (id, enrollment_id, label, category, priority, status)
+    SELECT ${randomUUID()}, ${enrollmentId}, ${label}, 'recommendation', 2, 'active'
+    WHERE NOT EXISTS (
+      SELECT 1 FROM recycling_items
+      WHERE enrollment_id=${enrollmentId} AND status='active' AND lower(label)=lower(${label})
+    )
+  `;
+  revalidatePath(`/students/${studentId}`);
+  revalidatePath('/');
+}
+
+export async function completeLearningPlanItem(formData: FormData) {
+  const studentId = String(formData.get('studentId') || '').trim();
+  const itemId = String(formData.get('itemId') || '').trim();
+  if (!studentId || !itemId) return;
+  await requireDb()`
+    UPDATE learning_plan_items p
+    SET status='done', completed_at=now()
+    FROM enrollments e
+    WHERE p.id=${itemId} AND p.enrollment_id=e.id AND e.student_id=${studentId}
+  `;
+  revalidatePath(`/students/${studentId}`);
+}
+
+export async function completeRecyclingItem(formData: FormData) {
+  const studentId = String(formData.get('studentId') || '').trim();
+  const itemId = String(formData.get('itemId') || '').trim();
+  if (!studentId || !itemId) return;
+  await requireDb()`
+    UPDATE recycling_items r
+    SET status='done', completed_at=now()
+    FROM enrollments e
+    WHERE r.id=${itemId} AND r.enrollment_id=e.id AND e.student_id=${studentId}
+  `;
+  revalidatePath(`/students/${studentId}`);
+  revalidatePath('/');
 }
 
 export async function addCourse(formData: FormData) {
