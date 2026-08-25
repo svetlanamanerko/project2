@@ -69,6 +69,25 @@ CREATE TABLE IF NOT EXISTS lessons (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS lesson_packages (
+  lesson_id text PRIMARY KEY REFERENCES lessons(id) ON DELETE CASCADE,
+  title text NOT NULL,
+  source_label text,
+  student_worksheet text NOT NULL,
+  teacher_pack text NOT NULL,
+  homework text NOT NULL,
+  reserve text NOT NULL,
+  vocabulary_bank text NOT NULL,
+  student_drive_file_id text,
+  student_drive_url text,
+  teacher_drive_file_id text,
+  teacher_drive_url text,
+  drive_folder_id text,
+  credits numeric(10,3),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS lesson_skill_results (
   id text PRIMARY KEY,
   lesson_id text NOT NULL REFERENCES lessons(id) ON DELETE CASCADE,
