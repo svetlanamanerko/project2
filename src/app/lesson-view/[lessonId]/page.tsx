@@ -9,7 +9,7 @@ export default async function StudentLessonPage({
   searchParams,
 }: {
   params: Promise<{ lessonId: string }>;
-  searchParams: Promise<{ style?: string }>;
+  searchParams: Promise<{ style?: string; clean?: string }>;
 }) {
   await requireSession();
   const [{ lessonId }, query] = await Promise.all([params, searchParams]);
@@ -29,5 +29,6 @@ export default async function StudentLessonPage({
     vocabularyBank={lesson.vocabularyBank}
     designStyle={designStyle}
     standalone
+    cleanMode={query.clean === '1'}
   />;
 }
