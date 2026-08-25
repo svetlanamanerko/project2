@@ -48,6 +48,7 @@ export async function POST(request: Request) {
   const contextRows = await sql<Array<{
     student: string;
     grade: number | null;
+    studentContext: string | null;
     course: string;
     courseFolderId: string | null;
     courseProfile: unknown;
@@ -55,7 +56,7 @@ export async function POST(request: Request) {
     topic: string | null;
     note: string | null;
   }>>`
-    SELECT s.display_name as student, s.school_grade as grade, c.title as course,
+    SELECT s.display_name as student, s.school_grade as grade, s.notes as "studentContext", c.title as course,
            c.drive_folder_id as "courseFolderId", c.course_profile as "courseProfile",
            sp.module, sp.topic, sp.note
     FROM enrollments e
@@ -70,21 +71,34 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, message: 'Маршрут ученика не найден.' }, { status: 404 });
   }
 
-  const recycling = await sql<Array<{ label: string; category: string }>>`
-    SELECT label, category FROM recycling_items
-    WHERE enrollment_id=${enrollmentId} AND status='active'
-    ORDER BY priority ASC, created_at ASC LIMIT 6
-  `;
-  const urgent = await sql<Array<{ description: string; detectedTopic: string | null }>>`
-    SELECT description, detected_topic as "detectedTopic" FROM urgent_requests
-    WHERE enrollment_id=${enrollmentId} AND status <> 'done'
-    ORDER BY created_at DESC LIMIT 3
-  `;
-  const skills = await sql<Array<{ skill: string; level: number; note: string | null }>>`
-    SELECT skill, level, note FROM skill_profiles
-    WHERE enrollment_id=${enrollmentId}
-    ORDER BY level ASC LIMIT 5
-  `;
+  const [recycling, urgent, skills, observations, learningPlan] = await Promise.all([
+    sql<Array<{ label: string; category: string }>>`
+      SELECT label, category FROM recycling_items
+      WHERE enrollment_id=${enrollmentId} AND status='active'
+      ORDER BY priority ASC, created_at ASC LIMIT 8
+    `,
+    sql<Array<{ description: string; detectedTopic: string | null }>>`
+      SELECT description, detected_topic as "detectedTopic" FROM urgent_requests
+      WHERE enrollment_id=${enrollmentId} AND status <> 'done'
+      ORDER BY created_at DESC LIMIT 3
+    `,
+    sql<Array<{ skill: string; level: number; note: string | null }>>`
+      SELECT skill, level, note FROM skill_profiles
+      WHERE enrollment_id=${enrollmentId}
+      ORDER BY level ASC LIMIT 8
+    `,
+    sql<Array<{ observedOn: string; strengths: string | null; difficulties: string | null; recycle: string | null; comment: string | null }>>`
+      SELECT to_char(observed_on, 'YYYY-MM-DD') as "observedOn", strengths, difficulties, recycle, comment
+      FROM student_observations
+      WHERE enrollment_id=${enrollmentId}
+      ORDER BY observed_on DESC, created_at DESC LIMIT 8
+    `,
+    sql<Array<{ label: string }>>`
+      SELECT label FROM learning_plan_items
+      WHERE enrollment_id=${enrollmentId} AND status='active'
+      ORDER BY created_at ASC LIMIT 10
+    `,
+  ]);
 
   let preparedSource: PreparedLessonSource | null = null;
   try {
@@ -100,12 +114,19 @@ export async function POST(request: Request) {
     console.error('[lesson-source] Не удалось подготовить страницы учебника:', error);
   }
 
+  const observationText = observations.length
+    ? observations.map((item) => `${item.observedOn}: получается — ${item.strengths || 'не отмечено'}; трудно — ${item.difficulties || 'не отмечено'}; повторить — ${item.recycle || 'не отмечено'}; комментарий — ${item.comment || 'нет'}`).join(' | ')
+    : 'наблюдений пока нет';
+
   const sourceContext = [
     `Ученик: ${context.student}${context.grade ? `, ${context.grade} класс` : ''}`,
+    `Постоянный контекст ученика: ${context.studentContext || 'не заполнен'}`,
     `Курс: ${context.course}`,
     `Модуль/раздел: ${context.module || 'не указан'}`,
     `Тема школы: ${context.topic || 'не указана'}`,
     `Что важно сейчас: ${context.note || 'нет заметки'}`,
+    `Наблюдения по прошлым урокам: ${observationText}`,
+    `Активный план обучения: ${learningPlan.length ? learningPlan.map((x) => x.label).join('; ') : 'пока пуст'}`,
     `Источник Google Drive: ${preparedSource ? preparedSource.label : 'точный фрагмент не найден или не указан'}`,
     `На повторение: ${recycling.length ? recycling.map((x) => `${x.label}${x.category ? ` (${x.category})` : ''}`).join('; ') : 'ничего не отмечено'}`,
     `Срочные запросы: ${urgent.length ? urgent.map((x) => x.description).join(' | ') : 'нет'}`,
@@ -116,7 +137,7 @@ export async function POST(request: Request) {
     ? `К сообщению приложен PDF-фрагмент реального учебника (${preparedSource.label}). Изучи именно эти страницы. Можно ссылаться на реально видимые упражнения, тексты, лексику и грамматику, но ничего не додумывай за пределами приложенного фрагмента.`
     : 'PDF-фрагмент учебника не приложен. Не выдумывай содержание страниц, номера упражнений, тексты или лексику; если они нужны, укажи, что нужен источник.';
 
-  const prompt = `Ты методист личной Мастерской уроков преподавателя английского. Составь КОРОТКИЙ ПЛАН ПОДГОТОВКИ к индивидуальному уроку на 60 минут. Это ещё не worksheet.\n\nДАННЫЕ ИЗ БАЗЫ:\n${sourceContext}\n\nРАБОТА С ИСТОЧНИКОМ:\n${sourceRule}\n\nЖЁСТКИЕ ПРАВИЛА:\n- опирайся на данные базы и приложенный источник, если он есть;\n- НЕ выдумывай упражнения, тексты, слова, правила или задания, которых нет в источнике/данных;\n- учитывай школьный темп: не предлагай надолго задерживаться на одном материале;\n- обязательно предусмотрите вывод материала в речь;\n- язык ответа — русский, компактно, без длинных объяснений.\n\nФОРМАТ:\nИсточник: ${preparedSource ? preparedSource.label : 'не найден'}\nФокус урока: ...\nЦель: ...\nCORE 60 минут:\n1. ...\n2. ...\n3. ...\n4. ...\nSpeaking transfer: ...\nЧто повторить: ...\nRESERVE: ...\nНужен дополнительный источник: ...`;
+  const prompt = `Ты методист личной Мастерской уроков преподавателя английского. Составь КОРОТКИЙ ПЛАН ПОДГОТОВКИ к индивидуальному уроку на 60 минут. Это ещё не worksheet.\n\nДАННЫЕ ИЗ БАЗЫ:\n${sourceContext}\n\nРАБОТА С ИСТОЧНИКОМ:\n${sourceRule}\n\nЖЁСТКИЕ ПРАВИЛА:\n- опирайся на данные базы, историю ученика, наблюдения преподавателя и приложенный источник, если он есть;\n- НЕ выдумывай упражнения, тексты, слова, правила или задания, которых нет в источнике/данных;\n- активные пункты плана обучения должны влиять на приоритеты урока, если они релевантны текущей школьной теме;\n- учитывай школьный темп: не предлагай надолго задерживаться на одном материале;\n- обязательно предусмотрите вывод материала в речь;\n- язык ответа — русский, компактно, без длинных объяснений.\n\nФОРМАТ:\nИсточник: ${preparedSource ? preparedSource.label : 'не найден'}\nФокус урока: ...\nЦель: ...\nCORE 60 минут:\n1. ...\n2. ...\n3. ...\n4. ...\nSpeaking transfer: ...\nЧто повторить: ...\nRESERVE: ...\nНужен дополнительный источник: ...`;
 
   try {
     const inputContent: Array<Record<string, string>> = [
