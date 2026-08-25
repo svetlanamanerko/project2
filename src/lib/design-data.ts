@@ -1,5 +1,6 @@
 import 'server-only';
 import { db, dbConfigured } from '@/lib/db';
+import { validateLessonJson, type LessonJsonV1 } from '@/lib/lesson-json';
 
 export type LessonDesignData = {
   lessonId: string;
@@ -12,11 +13,18 @@ export type LessonDesignData = {
   homework: string;
   vocabularyBank: string;
   teacherPack: string;
+  interactiveLesson: LessonJsonV1 | null;
+  sourceAvailable: boolean;
+};
+
+type LessonDesignRow = Omit<LessonDesignData, 'interactiveLesson' | 'sourceAvailable'> & {
+  interactiveJson: unknown;
+  sourceExcerptPath: string | null;
 };
 
 export async function getLessonDesignData(lessonId: string): Promise<LessonDesignData | null> {
   if (!dbConfigured()) return null;
-  const rows = await db()<LessonDesignData[]>`
+  const rows = await db()<LessonDesignRow[]>`
     SELECT
       l.id as "lessonId",
       s.display_name as student,
@@ -27,7 +35,9 @@ export async function getLessonDesignData(lessonId: string): Promise<LessonDesig
       lp.reserve,
       lp.homework,
       lp.vocabulary_bank as "vocabularyBank",
-      lp.teacher_pack as "teacherPack"
+      lp.teacher_pack as "teacherPack",
+      lp.interactive_json as "interactiveJson",
+      lp.source_excerpt_path as "sourceExcerptPath"
     FROM lessons l
     JOIN lesson_packages lp ON lp.lesson_id=l.id
     JOIN enrollments e ON e.id=l.enrollment_id
@@ -36,5 +46,21 @@ export async function getLessonDesignData(lessonId: string): Promise<LessonDesig
     WHERE l.id=${lessonId}
     LIMIT 1
   `;
-  return rows[0] || null;
+  const row = rows[0];
+  if (!row) return null;
+  const validation = validateLessonJson(row.interactiveJson);
+  return {
+    lessonId: row.lessonId,
+    student: row.student,
+    course: row.course,
+    title: row.title,
+    sourceLabel: row.sourceLabel,
+    studentWorksheet: row.studentWorksheet,
+    reserve: row.reserve,
+    homework: row.homework,
+    vocabularyBank: row.vocabularyBank,
+    teacherPack: row.teacherPack,
+    interactiveLesson: validation.ok ? validation.lesson : null,
+    sourceAvailable: !!row.sourceExcerptPath,
+  };
 }
