@@ -39,6 +39,7 @@ ${rootRule}
 SOURCE / MEDIA
 - MEDIA HONESTY: never write "look at the picture", "point to the picture", "look at the timetable" or "listen" unless the task has resourceId pointing to a suitable real resource.
 - A textbook picture/page dependency must use resourceId="source-book". If no real image/audio exists and source-book is unsuitable, omit the task from interactive JSON.
+- Dictation requires a real supported audio or teacher-cue resource. Until such a resource exists, omit dictation from interactive JSON. Never fake dictation as speaking, open_answer or oral_drill.
 - НИКОГДА не выдумывай URL, base64, blob, путь к картинке, mp3 или PDF.
 - Если задание требует видеть реальную страницу/картинку из приложенного учебника, ставь resourceId="source-book". Не добавляй source-book в resources: сервер подключает PDF сам.
 - Если несколько заданий зависят от одного созданного текста/правила, создай ОДИН text/reference resource и используй его resourceId во всех этих заданиях. Не дублируй длинный source в каждом task.

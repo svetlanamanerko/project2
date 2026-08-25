@@ -73,6 +73,7 @@ function normalizeType(value: unknown): LessonExerciseType | '' {
 const communicativePattern = /\b(introduce yourself|talk about|tell (?:me )?about|answer .*about yourself|act out (?:the )?dialogue|make (?:a )?dialogue|describe|personali[sz]ation)\b/i;
 const oralDrillPattern = /\b(read .* aloud|say (?:the )?(?:letters?|words?|sounds?)|spell\b|repeat\b|read (?:the )?names|name (?:the )?pictures|fast picture naming|quick (?:picture )?naming|last[- ]letter chain|first[- ]letter|last[- ]letter|word chain)\b/i;
 const selfCheckPattern = /\b(self[- ]check|tick the words you can|circle the words you can|check what you can)\b/i;
+const dictationPattern = /\b(?:mini[- ]?)?dictation\b/i;
 
 export function classifyLegacyExerciseType(value: { type?: unknown; title?: unknown; instruction?: unknown; prompt?: unknown; hasAnswerKey?: boolean }) {
   const current = normalizeType(value.type);
@@ -163,10 +164,11 @@ function remapAnswerRecord(value: unknown, left: Array<{ id: string; label: stri
   return result;
 }
 
-function normalizeExercise(raw: unknown, sectionId: string, index: number) {
+function normalizeExercise(raw: unknown, sectionId: string, index: number, supportedDictationResources: Set<string>) {
   const row = obj(raw) || {};
   const rawType = row.type || row.kind || row.exerciseType || row.exercise_type;
-  const type = classifyLegacyExerciseType({
+  const originalType = normalizeType(rawType);
+  let type = classifyLegacyExerciseType({
     type: rawType,
     title: row.title || row.name || row.heading,
     instruction: row.instruction || row.instructions || row.task,
@@ -177,15 +179,21 @@ function normalizeExercise(raw: unknown, sectionId: string, index: number) {
   const title = str(row.title || row.name || row.heading) || `Task ${index + 1}`;
   const instruction = str(row.instruction || row.instructions || row.prompt || row.task) || title;
   const resourceId = str(row.resourceId || row.resource_id || row.sourceId || row.source_id || row.resource || row.source) || undefined;
+  const semantics = `${title} ${instruction} ${str(row.prompt || row.question || row.text)}`;
+  if (dictationPattern.test(semantics) && (!resourceId || !supportedDictationResources.has(resourceId))) return null;
+
+  const migratedItems = type === 'oral_drill' || type === 'self_check'
+    ? cueItems(row, type === 'oral_drill' ? 'o' : 's')
+    : [];
+  if (type !== originalType && !migratedItems.length) type = originalType;
   const base = { id, type, title, instruction, ...(resourceId ? { resourceId } : {}) };
 
   if (type === 'oral_drill') {
-    const semantics = `${title} ${instruction} ${str(row.prompt || row.question || row.text)}`;
-    return { ...base, mode: oralMode(str(row.mode) || semantics), items: cueItems(row, 'o') };
+    return { ...base, mode: oralMode(str(row.mode) || semantics), items: migratedItems.length ? migratedItems : cueItems(row, 'o') };
   }
 
   if (type === 'self_check') {
-    return { ...base, items: cueItems(row, 's') };
+    return { ...base, items: migratedItems.length ? migratedItems : cueItems(row, 's') };
   }
 
   if (type === 'gap_fill') {
@@ -310,6 +318,9 @@ export function normalizeLessonJson(value: unknown, fallbackTitle = 'Interactive
       ...(str(row.alt || row.description) ? { alt: str(row.alt || row.description) } : {}),
     };
   });
+  const supportedDictationResources = new Set(resources
+    .filter((resource) => resource.type === 'audio' || (resource.type === 'reference' && /teacher|dictation cue/i.test(resource.title)))
+    .map((resource) => resource.id));
 
   const rawSections = Array.isArray(root.sections)
     ? root.sections
@@ -319,7 +330,9 @@ export function normalizeLessonJson(value: unknown, fallbackTitle = 'Interactive
     const row = obj(item) || {};
     const rawId = str(row.id || row.key || row.name).toLowerCase();
     const id = rawId.includes('reserve') ? 'reserve' : rawId.includes('home') ? 'homework' : rawId.includes('core') ? 'core' : ['core', 'reserve', 'homework'][sectionIndex] || rawId;
-    const exercises = arr(row.exercises || row.tasks || row.items).map((exercise, exerciseIndex) => normalizeExercise(exercise, id, exerciseIndex)).filter((exercise) => str((exercise as Record<string, unknown>).type));
+    const exercises = arr(row.exercises || row.tasks || row.items)
+      .map((exercise, exerciseIndex) => normalizeExercise(exercise, id, exerciseIndex, supportedDictationResources))
+      .filter((exercise) => !!obj(exercise) && !!str(obj(exercise)?.type));
     return { id, title: str(row.title || row.name) || id.toUpperCase(), exercises };
   }).filter((section) => section.exercises.length > 0);
 
