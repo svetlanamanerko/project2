@@ -12,6 +12,7 @@ export type StoredLessonPackage = {
   studentDriveUrl: string | null;
   teacherDriveUrl: string | null;
   credits: number | null;
+  interactiveReady: boolean;
 };
 
 export type TodayLesson = {
@@ -72,7 +73,8 @@ export async function getTodayLessons() {
         'vocabularyBank', lp.vocabulary_bank,
         'studentDriveUrl', lp.student_drive_url,
         'teacherDriveUrl', lp.teacher_drive_url,
-        'credits', lp.credits::float8
+        'credits', lp.credits::float8,
+        'interactiveReady', lp.interactive_json IS NOT NULL
       ) END as package
     FROM schedule_rules sr
     JOIN enrollments e ON e.id = sr.enrollment_id AND e.active = true
