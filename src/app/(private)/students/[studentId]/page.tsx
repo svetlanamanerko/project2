@@ -17,6 +17,15 @@ import styles from './student.module.css';
 
 const weekdayNames = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'];
 
+type AdviceView = {
+  summary: string;
+  priorities: string[];
+  nextLesson: string[];
+  watch: string[];
+  planItems: string[];
+  recycleItems: string[];
+};
+
 function formatLessonDate(date: string | null) {
   if (!date) return 'без даты';
   return new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })
@@ -28,12 +37,51 @@ function formatObservationDate(date: string) {
     .format(new Date(`${date}T12:00:00Z`));
 }
 
+function adviceStringList(value: unknown, limit = 8) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item): item is string => typeof item === 'string')
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, limit);
+}
+
+function normalizeAdviceForView(value: unknown): AdviceView | null {
+  let candidate = value;
+  if (typeof candidate === 'string') {
+    try {
+      candidate = JSON.parse(candidate);
+    } catch {
+      return null;
+    }
+  }
+  if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return null;
+  const object = candidate as Record<string, unknown>;
+  const advice: AdviceView = {
+    summary: typeof object.summary === 'string' ? object.summary.trim() : '',
+    priorities: adviceStringList(object.priorities, 6),
+    nextLesson: adviceStringList(object.nextLesson ?? object.next_lesson, 6),
+    watch: adviceStringList(object.watch, 6),
+    planItems: adviceStringList(object.planItems ?? object.plan_items, 8),
+    recycleItems: adviceStringList(object.recycleItems ?? object.recycle_items, 8),
+  };
+  if (!advice.summary && !advice.priorities.length && !advice.nextLesson.length && !advice.watch.length) return null;
+  return advice;
+}
+
+function normalizeCredits(value: unknown) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
 export default async function StudentPage({ params, searchParams }: PageProps<'/students/[studentId]'>) {
   const [{ studentId }, query] = await Promise.all([params, searchParams]);
   const student = await getStudentDetails(studentId);
   if (!student) notFound();
 
-  const latestAdvice = student.recommendations[0] || null;
+  const latestAdviceRecord = student.recommendations[0] || null;
+  const latestAdvice = latestAdviceRecord ? normalizeAdviceForView(latestAdviceRecord.advice) : null;
+  const latestCredits = latestAdviceRecord ? normalizeCredits(latestAdviceRecord.credits) : null;
   const defaultEnrollmentId = student.courses[0]?.enrollmentId || '';
 
   return <>
@@ -120,27 +168,27 @@ export default async function StudentPage({ params, searchParams }: PageProps<'/
         {query.advice === 'error' && <div className="notice warning">Не удалось получить рекомендации. Данные ученика сохранены — попробуй анализ ещё раз позже.</div>}
         <form action={generateStudentAdviceAction} className={styles.adviceAction}><input type="hidden" name="studentId" value={studentId}/><AdviceSubmitButton/></form>
 
-        {latestAdvice ? <div className={styles.adviceResult}>
-          <div className={styles.adviceMeta}><span>Последний анализ: {latestAdvice.createdAt.replace(' ', ' · ')}</span>{latestAdvice.credits != null && <span>{latestAdvice.credits.toFixed(2)} credits</span>}</div>
-          <p className={styles.adviceSummary}>{latestAdvice.advice.summary}</p>
+        {latestAdviceRecord && latestAdvice ? <div className={styles.adviceResult}>
+          <div className={styles.adviceMeta}><span>Последний анализ: {String(latestAdviceRecord.createdAt || '').replace(' ', ' · ') || 'дата не указана'}</span>{latestCredits != null && <span>{latestCredits.toFixed(2)} credits</span>}</div>
+          <p className={styles.adviceSummary}>{latestAdvice.summary}</p>
           <div className={styles.adviceColumns}>
-            <div><h3>Приоритеты</h3><ul>{latestAdvice.advice.priorities.map((item) => <li key={item}>{item}</li>)}</ul></div>
-            <div><h3>Ближайший урок</h3><ul>{latestAdvice.advice.nextLesson.map((item) => <li key={item}>{item}</li>)}</ul></div>
-            <div><h3>Наблюдать</h3><ul>{latestAdvice.advice.watch.map((item) => <li key={item}>{item}</li>)}</ul></div>
+            <div><h3>Приоритеты</h3><ul>{latestAdvice.priorities.map((item) => <li key={item}>{item}</li>)}</ul></div>
+            <div><h3>Ближайший урок</h3><ul>{latestAdvice.nextLesson.map((item) => <li key={item}>{item}</li>)}</ul></div>
+            <div><h3>Наблюдать</h3><ul>{latestAdvice.watch.map((item) => <li key={item}>{item}</li>)}</ul></div>
           </div>
 
-          {student.courses.length > 0 && (latestAdvice.advice.planItems.length > 0 || latestAdvice.advice.recycleItems.length > 0) && <div className={styles.suggestionGrid}>
-            <div><h3>Добавить в план обучения</h3>{latestAdvice.advice.planItems.map((item) => <form action={addLearningPlanItem} className={styles.suggestionForm} key={item}>
-              <input type="hidden" name="studentId" value={studentId}/><input type="hidden" name="recommendationId" value={latestAdvice.id}/><input type="hidden" name="label" value={item}/>
+          {student.courses.length > 0 && (latestAdvice.planItems.length > 0 || latestAdvice.recycleItems.length > 0) && <div className={styles.suggestionGrid}>
+            <div><h3>Добавить в план обучения</h3>{latestAdvice.planItems.map((item) => <form action={addLearningPlanItem} className={styles.suggestionForm} key={item}>
+              <input type="hidden" name="studentId" value={studentId}/><input type="hidden" name="recommendationId" value={latestAdviceRecord.id}/><input type="hidden" name="label" value={item}/>
               <span>{item}</span><select name="enrollmentId" defaultValue={defaultEnrollmentId}>{student.courses.map((course) => <option key={course.enrollmentId} value={course.enrollmentId}>{course.title}</option>)}</select><button type="submit">В план</button>
             </form>)}</div>
-            <div><h3>Добавить в повторение</h3>{latestAdvice.advice.recycleItems.map((item) => <form action={addRecyclingItem} className={styles.suggestionForm} key={item}>
+            <div><h3>Добавить в повторение</h3>{latestAdvice.recycleItems.map((item) => <form action={addRecyclingItem} className={styles.suggestionForm} key={item}>
               <input type="hidden" name="studentId" value={studentId}/><input type="hidden" name="label" value={item}/>
               <span>{item}</span><select name="enrollmentId" defaultValue={defaultEnrollmentId}>{student.courses.map((course) => <option key={course.enrollmentId} value={course.enrollmentId}>{course.title}</option>)}</select><button type="submit">Повторять</button>
             </form>)}</div>
           </div>}
           {student.recommendations.length > 1 && <p className="muted small">В истории сохранено ещё {student.recommendations.length - 1} прошлых анализа.</p>}
-        </div> : <div className={styles.emptyAdvice}><BrainCircuit size={28}/><div><strong>Анализа пока нет</strong><p>Сначала заполни контекст и несколько наблюдений — тогда рекомендации будут намного полезнее.</p></div></div>}
+        </div> : latestAdviceRecord ? <div className="notice warning">Анализ сохранён, но его формат не удалось прочитать. Повторно запускать AI не нужно — запись сохранена, карточка продолжает работать.</div> : <div className={styles.emptyAdvice}><BrainCircuit size={28}/><div><strong>Анализа пока нет</strong><p>Сначала заполни контекст и несколько наблюдений — тогда рекомендации будут намного полезнее.</p></div></div>}
       </section>
 
       <section className={`panel ${styles.wide} ${styles.recent}`}>
