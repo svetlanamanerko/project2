@@ -3,6 +3,7 @@ import { hasSession } from '@/lib/auth';
 import { db, dbConfigured } from '@/lib/db';
 import { normalizeLessonJson } from '@/lib/lesson-json-normalize';
 import { validateLessonJson, type LessonJsonV1 } from '@/lib/lesson-json';
+import { buildInteractiveRepairPrompt } from '@/lib/lesson-json-prompt';
 
 function extractTextCandidates(payload: unknown) {
   const result: string[] = [];
@@ -71,7 +72,6 @@ function object(value: unknown): Record<string, unknown> | null {
 function unwrapLessonJson(value: unknown) {
   let current = value;
 
-  // Be liberal only about transport/wrapping. The strict validator still checks lesson semantics.
   for (let depth = 0; depth < 6; depth += 1) {
     if (typeof current === 'string') {
       const parsed = parseJsonLoose(current);
@@ -90,8 +90,6 @@ function unwrapLessonJson(value: unknown) {
 
     const row = object(current);
     if (!row) return current;
-
-    // Already the direct Lesson JSON object.
     if ('sections' in row || ('version' in row && 'resources' in row)) return row;
 
     const wrappers = ['interactiveLesson', 'interactive_lesson', 'lesson', 'data', 'result', 'json'];
@@ -110,7 +108,6 @@ function findValidLessonJson(payload: unknown, fallbackTitle: string): {
   const candidates = extractTextCandidates(payload);
   let bestIssues: string[] = ['KIE не вернул JSON-объект урока'];
 
-  // Final message/output is normally last, so inspect from the end first.
   for (const text of [...candidates].reverse()) {
     const parsed = parseJsonLoose(text);
     if (parsed == null) continue;
@@ -163,7 +160,13 @@ export async function POST(request: Request) {
     if (existing.ok) return NextResponse.json({ ok: true, ready: true, alreadyReady: true, credits: 0 });
   }
 
-  const prompt = `Преобразуй УЖЕ ГОТОВЫЙ урок английского в структурированный Lesson JSON версии 1. НЕ переписывай и не расширяй методическое содержание. Твоя задача только правильно разложить существующие задания по интерактивным типам и перенести answer keys из Teacher Pack.\n\nTITLE:\n${lesson.title}\n\nCORE:\n${lesson.studentWorksheet}\n\nRESERVE:\n${lesson.reserve}\n\nHOMEWORK:\n${lesson.homework}\n\nTEACHER PACK / ANSWER KEYS:\n${lesson.teacherPack}\n\nПРАВИЛА ОТВЕТА:\n- Верни ТОЛЬКО ОДИН JSON-ОБЪЕКТ. Первый символ ответа {, последний символ }.\n- НЕ добавляй внешнюю обёртку interactiveLesson, data, result или lesson.\n- Корневые ключи ровно: version, title, resources, sections.\n- version=1; sections: core/reserve/homework. Пустую секцию можно не включать.\n- Только type: gap_fill, dropdown, true_false_ns, multiple_choice, matching, sort, open_answer, speaking, reading.\n- gap_fill: text с {{b1}} маркерами; blanks [{id,answer,options?}], wordBank при наличии банка.\n- dropdown: items [{id,before,after?,options,answer}], answer обязательно один из options.\n- true_false_ns: answer только true/false/ns.\n- multiple_choice: options [{id,label}], answerId — id правильного варианта.\n- matching: leftItems/rightItems [{id,label}], pairs как leftId:rightId.\n- sort: items/groups [{id,label}], answers как itemId:groupId.\n- open_answer: prompts [{id,prompt,sampleAnswer?}].\n- speaking: prompt, usefulLanguage, starters, sampleAnswer.\n- reading: если для задания нужен исходный учебник/текст, ставь resourceId="source-book".\n- Если инструкция говорит Look at the picture / по картинке / по странице учебника — resourceId="source-book".\n- Не создавай listening: аудио-движок ещё не подключён. Если в готовом уроке есть Listen, пока представь его как reading/open_answer только если задание можно честно выполнить без аудио; иначе пропусти из интерактивной версии.\n- Не выдумывай answer key. Если в Teacher Pack нет объективного ответа, используй open_answer/speaking.\n- У каждого упражнения уникальные id/title/instruction.\n- resources могут содержать только созданные тобой text/reference resources с content. source-book в resources НЕ добавляй.\n\nПРИМЕР КОРНЯ (только форма, не копируй содержание):\n{"version":1,"title":"Lesson","resources":[],"sections":[{"id":"core","title":"CORE","exercises":[]}]}`;
+  const prompt = buildInteractiveRepairPrompt({
+    title: lesson.title,
+    studentWorksheet: lesson.studentWorksheet,
+    reserve: lesson.reserve,
+    homework: lesson.homework,
+    teacherPack: lesson.teacherPack,
+  });
 
   try {
     const response = await fetch('https://api.kie.ai/codex/v1/responses', {
