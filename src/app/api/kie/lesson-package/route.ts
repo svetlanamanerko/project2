@@ -5,7 +5,6 @@ import { db, dbConfigured } from '@/lib/db';
 import { prepareLessonSource } from '@/lib/lesson-source';
 import { buildLessonDocx } from '@/lib/lesson-docx';
 import { generatedDocxMimeType, uploadLessonPackageFiles } from '@/lib/generated-materials-drive';
-import { validateLessonJson, type LessonJsonV1 } from '@/lib/lesson-json';
 
 type PackageDraft = {
   title: string;
@@ -14,8 +13,6 @@ type PackageDraft = {
   homework: string;
   reserve: string;
   vocabularyBank: string;
-  interactiveLesson: LessonJsonV1 | null;
-  interactiveIssues: string[];
 };
 
 function todayString() {
@@ -23,49 +20,74 @@ function todayString() {
   return new Intl.DateTimeFormat('sv-SE', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 }
 
-function extractText(payload: unknown) {
-  if (!payload || typeof payload !== 'object') return '';
+function extractTextCandidates(payload: unknown) {
+  const result: string[] = [];
+  if (!payload || typeof payload !== 'object') return result;
+  const direct = (payload as { output_text?: unknown }).output_text;
+  if (typeof direct === 'string' && direct.trim()) result.push(direct.trim());
   const output = (payload as { output?: unknown }).output;
-  if (!Array.isArray(output)) return '';
+  if (!Array.isArray(output)) return result;
   for (const item of output) {
     if (!item || typeof item !== 'object') continue;
     const content = (item as { content?: unknown }).content;
     if (!Array.isArray(content)) continue;
     for (const part of content) {
-      if (part && typeof part === 'object' && typeof (part as { text?: unknown }).text === 'string') {
-        return (part as { text: string }).text.trim();
-      }
+      if (!part || typeof part !== 'object') continue;
+      const text = (part as { text?: unknown }).text;
+      if (typeof text === 'string' && text.trim()) result.push(text.trim());
     }
   }
-  return '';
+  return result;
+}
+
+function parseJsonLoose(text: string): Record<string, unknown> | null {
+  const cleaned = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+  const attempts = [cleaned];
+  const first = cleaned.indexOf('{');
+  const last = cleaned.lastIndexOf('}');
+  if (first >= 0 && last > first) attempts.push(cleaned.slice(first, last + 1));
+  for (const attempt of attempts) {
+    try {
+      let parsed: unknown = JSON.parse(attempt);
+      for (let depth = 0; depth < 3 && typeof parsed === 'string'; depth += 1) parsed = JSON.parse(parsed);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        const row = parsed as Record<string, unknown>;
+        for (const wrapper of ['data', 'result', 'package']) {
+          const nested = row[wrapper];
+          if (nested && typeof nested === 'object' && !Array.isArray(nested)) return nested as Record<string, unknown>;
+        }
+        return row;
+      }
+    } catch {
+      // Try the next candidate.
+    }
+  }
+  return null;
 }
 
 function parsePackage(text: string): PackageDraft | null {
-  const cleaned = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
-  const first = cleaned.indexOf('{');
-  const last = cleaned.lastIndexOf('}');
-  if (first < 0 || last <= first) return null;
-  try {
-    const parsed = JSON.parse(cleaned.slice(first, last + 1)) as Record<string, unknown>;
-    const fields = ['title', 'studentWorksheet', 'teacherPack', 'homework', 'reserve', 'vocabularyBank'] as const;
-    for (const field of fields) {
-      if (typeof parsed[field] !== 'string' || !String(parsed[field]).trim()) return null;
-    }
-
-    const interactive = validateLessonJson(parsed.interactiveLesson);
-    return {
-      title: String(parsed.title).trim(),
-      studentWorksheet: String(parsed.studentWorksheet).trim(),
-      teacherPack: String(parsed.teacherPack).trim(),
-      homework: String(parsed.homework).trim(),
-      reserve: String(parsed.reserve).trim(),
-      vocabularyBank: String(parsed.vocabularyBank).trim(),
-      interactiveLesson: interactive.ok ? interactive.lesson : null,
-      interactiveIssues: interactive.ok ? [] : interactive.issues,
-    };
-  } catch {
-    return null;
+  const parsed = parseJsonLoose(text);
+  if (!parsed) return null;
+  const fields = ['title', 'studentWorksheet', 'teacherPack', 'homework', 'reserve', 'vocabularyBank'] as const;
+  for (const field of fields) {
+    if (typeof parsed[field] !== 'string' || !String(parsed[field]).trim()) return null;
   }
+  return {
+    title: String(parsed.title).trim(),
+    studentWorksheet: String(parsed.studentWorksheet).trim(),
+    teacherPack: String(parsed.teacherPack).trim(),
+    homework: String(parsed.homework).trim(),
+    reserve: String(parsed.reserve).trim(),
+    vocabularyBank: String(parsed.vocabularyBank).trim(),
+  };
+}
+
+function findPackage(payload: unknown) {
+  for (const text of extractTextCandidates(payload).reverse()) {
+    const draft = parsePackage(text);
+    if (draft) return draft;
+  }
+  return null;
 }
 
 function safeFilePart(value: string) {
@@ -74,10 +96,6 @@ function safeFilePart(value: string) {
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 80) || 'Lesson';
-}
-
-function appendWarning(current: string | null, addition: string) {
-  return current ? `${current} ${addition}` : addition;
 }
 
 export async function POST(request: Request) {
@@ -188,7 +206,38 @@ export async function POST(request: Request) {
     `Навыки: ${skills.length ? skills.map((x) => `${x.skill} ${x.level}/100${x.note ? ` — ${x.note}` : ''}`).join('; ') : 'пока не заполнены'}`,
   ].join('\n');
 
-  const prompt = `Ты методист и автор материалов личной «Мастерской уроков» преподавателя английского. К сообщению приложен реальный фрагмент учебника. Собери ПОЛНЫЙ пакет к индивидуальному уроку на 60 минут, который можно сразу использовать онлайн и распечатать.\n\nКОНТЕКСТ:\n${contextText}\n\nМЕТОДИКА:\n- учебник — основа урока; внимательно изучи приложенные страницы;\n- не выдумывай содержание страниц и номера упражнений;\n- не перепечатывай длинные тексты учебника: создавай оригинальную дополнительную практику по реально видимой лексике/грамматике/функциям;\n- CORE реально заполняет 60 минут, RESERVE — большой запас;\n- глубокая vocabulary practice + chunks/collocations, grammar recycling, reading/listening где уместно, Reverse Translation для подходящего возраста, обязательный speaking transfer, постепенное снятие опор;\n- Student Worksheet без ответов и teacher-only комментариев;\n- Teacher Pack содержит ответы ко ВСЕМ заданиям, scripts, примерные speaking answers, тайминг и teacher notes;\n- HOMEWORK самостоятельный; VOCABULARY BANK: English phrase — русский перевод — короткий example/collocation;\n- материал помогает школьной программе, а не уводит далеко вперёд.\n\nИНТЕРАКТИВНЫЙ УРОК:\nОдновременно создай interactiveLesson версии 1. Это НЕ HTML, а данные для renderer. Используй только эти type: gap_fill, dropdown, true_false_ns, multiple_choice, matching, sort, open_answer, speaking, reading.\n- gap_fill: text с маркерами {{b1}}, {{b2}}; blanks [{id,answer,options?}]; если есть банк слов — wordBank.\n- dropdown: items [{id,before,after,options,answer}], answer обязательно есть в options.\n- true_false_ns: items [{id,statement,answer}], answer только true/false/ns.\n- multiple_choice: items [{id,question,options:[{id,label}],answerId}].\n- matching: leftItems/rightItems [{id,label}], pairs — объект leftId:rightId. Правая колонка должна быть логично перемешиваема.\n- sort: items [{id,label}], groups [{id,label}], answers — объект itemId:groupId.\n- open_answer: prompts [{id,prompt,sampleAnswer?}].\n- speaking: prompt + usefulLanguage + starters + sampleAnswer.\n- reading: это карточка-инструкция, которая обязательно ссылается resourceId на текстовый resource или на source-book.\nРесурсы resources: только text/reference, которые ты создаёшь сам. Для задания, которому нужно видеть реальные страницы/картинку из приложенного учебника, ставь resourceId: "source-book"; НЕ добавляй source-book в resources — сервер добавит PDF сам. Не создавай listening/audio/image resource без реального URL. Пока аудио-движок не подключён, интерактивный JSON не должен содержать type listening.\nЕсли инструкция говорит sort/match/choose, создавай соответствующий настоящий интерактивный type, а не open_answer. Если говорится Look at the picture по приложенной странице — ставь resourceId source-book.\nУ каждого упражнения уникальный id, title и instruction. Разделы: core, reserve, homework. Не включай ответы в видимый instruction/title, но answer keys обязательно храни в соответствующих полях JSON.\n\nВЕРНИ ТОЛЬКО валидный JSON, без markdown и без текста до/после. Структура верхнего уровня строго такая:\n{\n  "title": "короткое название урока",\n  "studentWorksheet": "полный CORE worksheet на 60 минут; без reserve/homework/vocabulary bank",\n  "teacherPack": "ключи, скрипты, тайминг и teacher notes ко всему пакету",\n  "homework": "полноценное домашнее задание",\n  "reserve": "большой запас дополнительных упражнений",\n  "vocabularyBank": "Vocabulary Bank строками: phrase — перевод — example",\n  "interactiveLesson": {\n    "version": 1,\n    "title": "название",\n    "resources": [],\n    "sections": [\n      {"id":"core","title":"CORE","exercises":[]},\n      {"id":"reserve","title":"RESERVE","exercises":[]},\n      {"id":"homework","title":"HOMEWORK","exercises":[]}\n    ]\n  }\n}`;
+  const prompt = `Ты методист и автор материалов личной «Мастерской уроков» преподавателя английского. К сообщению приложен реальный фрагмент учебника. Собери ПОЛНЫЙ текстовый пакет к индивидуальному уроку на 60 минут, который можно сразу использовать онлайн и распечатать.
+
+КОНТЕКСТ:
+${contextText}
+
+МЕТОДИКА:
+- учебник — основа урока; внимательно изучи приложенные страницы;
+- не выдумывай содержание страниц и номера упражнений;
+- не перепечатывай длинные тексты учебника: создавай оригинальную дополнительную практику по реально видимой лексике/грамматике/функциям;
+- CORE реально заполняет 60 минут, RESERVE — большой запас;
+- глубокая vocabulary practice + chunks/collocations, grammar recycling, reading/listening где уместно, Reverse Translation для подходящего возраста, обязательный speaking transfer, постепенное снятие опор;
+- строй progression: короткий вход/активация -> recognition/comprehension -> controlled practice -> freer production/speaking;
+- не дроби одно содержательное упражнение на десяток однофразовых микрозаданий; лучше один плотный task с 5–10 items, если это методически естественно;
+- держи одну лексику, персонажей, ситуацию и grammar target в связанных заданиях, а не вводи случайные новые темы;
+- Student Worksheet без ответов и teacher-only комментариев;
+- Teacher Pack содержит ответы ко ВСЕМ заданиям, scripts, примерные speaking answers, тайминг и teacher notes;
+- HOMEWORK самостоятельный; VOCABULARY BANK: English phrase — русский перевод — короткий example/collocation;
+- материал помогает школьной программе, а не уводит далеко вперёд.
+
+ВАЖНО:
+- Сейчас НЕ создавай interactiveLesson, HTML или дизайн-версию. Интерактив строится отдельной кнопкой позже из уже готового пакета, чтобы не тратить AI credits без необходимости.
+- Верни только текстовые части пакета.
+
+ВЕРНИ ТОЛЬКО валидный JSON, без markdown и без текста до/после. Структура верхнего уровня строго такая:
+{
+  "title": "короткое название урока",
+  "studentWorksheet": "полный CORE worksheet на 60 минут; без reserve/homework/vocabulary bank",
+  "teacherPack": "ключи, скрипты, тайминг и teacher notes ко всему пакету",
+  "homework": "полноценное домашнее задание",
+  "reserve": "большой запас дополнительных упражнений",
+  "vocabularyBank": "Vocabulary Bank строками: phrase — перевод — example"
+}`;
 
   try {
     const response = await fetch('https://api.kie.ai/codex/v1/responses', {
@@ -215,10 +264,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, message: msg || `KIE ответил HTTP ${response.status}.` }, { status: 502 });
     }
 
-    const raw = extractText(payload);
-    const draft = parsePackage(raw);
+    const draft = findPackage(payload);
     if (!draft) {
-      console.error('[lesson-package] KIE вернул невалидную структуру:', raw.slice(0, 1000));
+      console.error('[lesson-package] KIE вернул невалидную структуру');
       return NextResponse.json({ ok: false, message: 'AI собрал урок, но вернул его в неверном формате. Нажмите «Собрать урок» ещё раз.' }, { status: 502 });
     }
 
@@ -277,15 +325,9 @@ export async function POST(request: Request) {
       warning = 'Урок собран и сохранён в Мастерской, но Word-файлы пока не удалось записать на Google Drive.';
     }
 
-    if (!draft.interactiveLesson) {
-      console.error('[lesson-package] interactiveLesson не прошёл validator:', draft.interactiveIssues);
-      warning = appendWarning(warning, 'Word-пакет готов, но интерактивная JSON-версия не прошла проверку и не будет показана ученику.');
-    }
-
     const creditsRaw = payload && typeof payload === 'object' && 'credits_consumed' in payload
       ? Number((payload as { credits_consumed?: unknown }).credits_consumed) : null;
     const credits = Number.isFinite(creditsRaw) ? creditsRaw : null;
-    const interactiveJson = draft.interactiveLesson ? JSON.stringify(draft.interactiveLesson) : null;
 
     await sql.begin(async (tx) => {
       await tx`
@@ -295,7 +337,7 @@ export async function POST(request: Request) {
           student_drive_file_id, student_drive_url, teacher_drive_file_id, teacher_drive_url, drive_folder_id, credits, updated_at
         ) VALUES (
           ${lessonId}, ${draft.title}, ${source.label}, ${draft.studentWorksheet}, ${draft.teacherPack}, ${draft.homework}, ${draft.reserve}, ${draft.vocabularyBank},
-          ${interactiveJson}::jsonb, ${source.excerptPath}, ${draft.interactiveLesson ? new Date() : null},
+          NULL, ${source.excerptPath}, NULL,
           ${drive?.student.id || null}, ${drive?.student.url || null}, ${drive?.teacher.id || null}, ${drive?.teacher.url || null}, ${drive?.folderId || null}, ${credits}, now()
         )
         ON CONFLICT (lesson_id) DO UPDATE SET
@@ -306,9 +348,9 @@ export async function POST(request: Request) {
           homework=EXCLUDED.homework,
           reserve=EXCLUDED.reserve,
           vocabulary_bank=EXCLUDED.vocabulary_bank,
-          interactive_json=EXCLUDED.interactive_json,
+          interactive_json=NULL,
           source_excerpt_path=EXCLUDED.source_excerpt_path,
-          interactive_generated_at=EXCLUDED.interactive_generated_at,
+          interactive_generated_at=NULL,
           student_drive_file_id=EXCLUDED.student_drive_file_id,
           student_drive_url=EXCLUDED.student_drive_url,
           teacher_drive_file_id=EXCLUDED.teacher_drive_file_id,
@@ -337,7 +379,7 @@ export async function POST(request: Request) {
       ok: true,
       warning,
       credits,
-      interactiveReady: !!draft.interactiveLesson,
+      interactiveReady: false,
       package: {
         title: draft.title,
         sourceLabel: source.label,
