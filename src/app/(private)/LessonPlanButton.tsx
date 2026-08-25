@@ -23,6 +23,7 @@ type LessonPackage = {
   studentDriveUrl: string | null;
   teacherDriveUrl: string | null;
   credits?: number | null;
+  interactiveReady?: boolean;
 };
 
 type PackageResponse = {
@@ -30,7 +31,17 @@ type PackageResponse = {
   message?: string;
   warning?: string | null;
   credits?: number | null;
+  interactiveReady?: boolean;
   package?: LessonPackage;
+};
+
+type RepairResponse = {
+  ok: boolean;
+  ready?: boolean;
+  alreadyReady?: boolean;
+  message?: string;
+  credits?: number | null;
+  issues?: string[];
 };
 
 type VocabularyRow = {
@@ -89,6 +100,9 @@ export function LessonPlanButton({
   const [copiedVocabulary, setCopiedVocabulary] = useState(false);
   const [designOpen, setDesignOpen] = useState(false);
   const [designStyle, setDesignStyle] = useState<DesignStyleId>('bright-kids');
+  const [interactiveLoading, setInteractiveLoading] = useState(false);
+  const [interactiveMessage, setInteractiveMessage] = useState('');
+  const [interactiveError, setInteractiveError] = useState('');
 
   const vocabularyRows = useMemo(
     () => parseVocabularyBank(lessonPackage?.vocabularyBank || ''),
@@ -124,6 +138,8 @@ export function LessonPlanButton({
     setPackageWarning('');
     setCopiedVocabulary(false);
     setDesignOpen(false);
+    setInteractiveMessage('');
+    setInteractiveError('');
     try {
       const response = await fetch('/api/kie/lesson-package', {
         method: 'POST',
@@ -135,7 +151,7 @@ export function LessonPlanButton({
         setPackageError(data.message || 'Не удалось собрать урок.');
         return;
       }
-      setLessonPackage(data.package);
+      setLessonPackage({ ...data.package, interactiveReady: data.interactiveReady ?? data.package.interactiveReady ?? false });
       setPackageCredits(data.credits ?? null);
       setPackageWarning(data.warning || '');
       router.refresh();
@@ -143,6 +159,36 @@ export function LessonPlanButton({
       setPackageError('Не удалось связаться с AI. Попробуйте ещё раз.');
     } finally {
       setPackageLoading(false);
+    }
+  }
+
+  async function prepareInteractive() {
+    if (!lessonId) return;
+    setInteractiveLoading(true);
+    setInteractiveMessage('');
+    setInteractiveError('');
+    try {
+      const response = await fetch('/api/kie/interactive-repair', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lessonId }),
+      });
+      const data = await response.json() as RepairResponse;
+      if (!response.ok || !data.ok || !data.ready) {
+        const details = data.issues?.length ? `\n${data.issues.join('\n')}` : '';
+        setInteractiveError(`${data.message || 'Не удалось подготовить интерактив.'}${details}`);
+        return;
+      }
+      setLessonPackage((current) => current ? { ...current, interactiveReady: true } : current);
+      setPackageWarning('');
+      setInteractiveMessage(data.alreadyReady
+        ? 'Интерактивная версия уже готова.'
+        : `Интерактивная версия готова${data.credits != null ? ` · ${data.credits} credits` : ''}.`);
+      router.refresh();
+    } catch {
+      setInteractiveError('Не удалось связаться с AI для интерактивной версии.');
+    } finally {
+      setInteractiveLoading(false);
     }
   }
 
@@ -209,25 +255,38 @@ export function LessonPlanButton({
             <Palette size={16}/>Создать дизайн-версию
           </button>
           {designOpen && <div className="design-picker">
-            <div className="design-picker-head">
-              <strong>Выбери визуальный стиль</strong>
-              <span>Содержание урока не меняется — меняется только подача.</span>
-            </div>
-            <div className="design-style-grid">
-              {DESIGN_STYLES.map((style) => <button
-                key={style.id}
-                type="button"
-                className={`design-style-card ${designStyle === style.id ? 'selected' : ''}`}
-                onClick={() => setDesignStyle(style.id)}
-              >
-                <span className="design-style-icon" aria-hidden="true">{style.icon}</span>
-                <span><strong>{style.title}</strong><small>{style.description}</small></span>
-              </button>)}
-            </div>
-            <div className="design-version-options">
-              <a className="design-option interactive" href={`/lesson-view/${lessonId}?style=${designStyle}`} target="_blank" rel="noreferrer"><MonitorPlay size={18}/><span><strong>Открыть интерактивный урок</strong><small>Чистая страница без кабинета и sidebar</small></span></a>
-              <a className="design-option printable" href={`/lesson-view/${lessonId}/print?style=${designStyle}`} target="_blank" rel="noreferrer"><Printer size={18}/><span><strong>Версия для печати</strong><small>A4 / печать / сохранить PDF</small></span></a>
-            </div>
+            {!lessonPackage.interactiveReady ? <>
+              <div className="design-picker-head">
+                <strong>Сначала подготовим интерактив</strong>
+                <span>Word уже готов. Здесь AI только превращает готовые задания в JSON — без повторной сборки всего урока.</span>
+              </div>
+              <button className="button assemble-lesson-button" type="button" onClick={prepareInteractive} disabled={interactiveLoading}>
+                <WandSparkles size={16}/>{interactiveLoading ? 'Готовлю интерактив…' : 'Подготовить интерактив из готового урока'}
+              </button>
+              {interactiveError && <div className="notice danger ai-plan-message" style={{ whiteSpace: 'pre-wrap' }}>{interactiveError}</div>}
+              {interactiveMessage && <div className="notice success ai-plan-message">{interactiveMessage}</div>}
+            </> : <>
+              <div className="design-picker-head">
+                <strong>Выбери визуальный стиль</strong>
+                <span>Содержание урока не меняется — меняется только подача.</span>
+              </div>
+              {interactiveMessage && <div className="notice success ai-plan-message">{interactiveMessage}</div>}
+              <div className="design-style-grid">
+                {DESIGN_STYLES.map((style) => <button
+                  key={style.id}
+                  type="button"
+                  className={`design-style-card ${designStyle === style.id ? 'selected' : ''}`}
+                  onClick={() => setDesignStyle(style.id)}
+                >
+                  <span className="design-style-icon" aria-hidden="true">{style.icon}</span>
+                  <span><strong>{style.title}</strong><small>{style.description}</small></span>
+                </button>)}
+              </div>
+              <div className="design-version-options">
+                <a className="design-option interactive" href={`/lesson-view/${lessonId}?style=${designStyle}`} target="_blank" rel="noreferrer"><MonitorPlay size={18}/><span><strong>Открыть интерактивный урок</strong><small>Чистая страница без кабинета и sidebar</small></span></a>
+                <a className="design-option printable" href={`/lesson-view/${lessonId}/print?style=${designStyle}`} target="_blank" rel="noreferrer"><Printer size={18}/><span><strong>Версия для печати</strong><small>A4 / печать / сохранить PDF</small></span></a>
+              </div>
+            </>}
           </div>}
         </div>}
 
