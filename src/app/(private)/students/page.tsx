@@ -16,9 +16,10 @@ const weekdays = [
   ['7', 'Воскресенье'],
 ];
 
-export default async function StudentsPage() {
-  const [students, courses, enrollments] = await Promise.all([getStudents(), getCourses(), getEnrollments()]);
+export default async function StudentsPage({ searchParams }: PageProps<'/students'>) {
+  const [students, courses, enrollments, params] = await Promise.all([getStudents(), getCourses(), getEnrollments(), searchParams]);
   const hasDb = dbConfigured();
+  const selectedStudentId = students.some((student) => student.id === params.student) ? params.student : '';
 
   return <>
     <header className="page-head"><div><p className="eyebrow">Личные маршруты</p><h1>Ученики</h1><p className="muted">Каждый ученик хранит свой прогресс, школьную позицию и очередь повторения.</p></div></header>
@@ -37,7 +38,7 @@ export default async function StudentsPage() {
       <div className="panel-title"><div><h2><BookOpenCheck size={18}/>Настроить обучение</h2><p className="muted small">Свяжите ученика с учебником, укажите расписание и где сейчас находится школа.</p></div><span className="soft-badge">один раз — потом обновляем по ходу</span></div>
 
       {!hasDb ? <div className="notice warning">Сначала подключим PostgreSQL.</div> : students.length === 0 || courses.length === 0 ? <div className="notice warning">Сначала добавьте хотя бы одного ученика и один курс.</div> : <form action={configureStudentCourse} className={styles.setupGrid}>
-        <label>Ученик<select name="studentId" required defaultValue=""><option value="" disabled>Выберите ученика</option>{students.map((s) => <option value={s.id} key={s.id}>{s.displayName}</option>)}</select></label>
+        <label>Ученик<select name="studentId" required defaultValue={selectedStudentId}><option value="" disabled>Выберите ученика</option>{students.map((s) => <option value={s.id} key={s.id}>{s.displayName}</option>)}</select></label>
         <label>Курс<select name="courseId" required defaultValue=""><option value="" disabled>Выберите курс</option>{courses.map((c) => <option value={c.id} key={c.id}>{c.title}</option>)}</select></label>
         <label>День<select name="weekday" defaultValue=""><option value="">Пока не указывать</option>{weekdays.map(([value,label]) => <option value={value} key={value}>{label}</option>)}</select></label>
         <label>Время<div className={styles.inputIcon}><Clock3 size={16}/><input name="time" type="time"/></div></label>

@@ -24,10 +24,10 @@ export default async function TodayPage({ searchParams }: PageProps<'/'>) {
     <header className="hero hero-rich">
       <div className="hero-copy">
         <p className="eyebrow">Рабочий день без хаоса</p>
-        <h1>Сегодня в мастерской</h1>
+        <h1>{isTomorrow ? 'Завтра в мастерской' : 'Сегодня в мастерской'}</h1>
         <p className="muted">Всё, что нужно подготовить, повторить и не забыть.</p>
         <div className="hero-chips">
-          <span><CalendarDays size={14}/><strong>{lessons.length}</strong> уроков сегодня</span>
+          <span><CalendarDays size={14}/><strong>{lessons.length}</strong> {isTomorrow ? 'уроков завтра' : 'уроков сегодня'}</span>
           <span><CheckCircle2 size={14}/><strong>{ready}</strong> уже готовы</span>
           <span><RefreshCw size={14}/><strong>{recycling.length}</strong> в повторении</span>
         </div>

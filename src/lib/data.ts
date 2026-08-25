@@ -202,8 +202,8 @@ export async function getCourses() {
 
 export async function getEnrollments() {
   if (!dbConfigured()) return [];
-  return db()<Array<{ id: string; student: string; course: string }>>`
-    SELECT e.id, s.display_name as student, c.title as course
+  return db()<Array<{ id: string; studentId: string; student: string; course: string }>>`
+    SELECT e.id, s.id as "studentId", s.display_name as student, c.title as course
     FROM enrollments e JOIN students s ON s.id=e.student_id JOIN courses c ON c.id=e.course_id
     WHERE e.active=true ORDER BY s.display_name
   `;

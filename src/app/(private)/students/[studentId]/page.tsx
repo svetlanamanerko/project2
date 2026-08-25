@@ -27,9 +27,9 @@ export default async function StudentPage({ params }: PageProps<'/students/[stud
         <div><p className="eyebrow">Карточка ученика</p><h1>{student.displayName}</h1><p className="muted">{student.schoolGrade ? `${student.schoolGrade} класс` : 'Класс не указан'}</p></div>
       </div>
       <div className={styles.actions}>
-        <Link className={`button ${styles.secondaryButton}`} href="/students#learning-setup"><BookOpenCheck size={17}/>Настроить обучение</Link>
-        <Link className="button primary" href="/"><Sparkles size={17}/>Подготовить урок</Link>
-        <Link className={`button ${styles.urgentButton}`} href="/urgent"><LifeBuoy size={17}/>Срочная помощь</Link>
+        <Link className={`button ${styles.secondaryButton}`} href={`/students?student=${studentId}#learning-setup`}><BookOpenCheck size={17}/>Настроить обучение</Link>
+        <Link className="button primary" href={`/?student=${studentId}`}><Sparkles size={17}/>Подготовить урок</Link>
+        <Link className={`button ${styles.urgentButton}`} href={`/urgent?student=${studentId}`}><LifeBuoy size={17}/>Срочная помощь</Link>
       </div>
     </header>
 
