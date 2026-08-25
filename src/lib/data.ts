@@ -1,6 +1,19 @@
 import 'server-only';
 import { db, dbConfigured } from '@/lib/db';
 
+export type StoredLessonPackage = {
+  title: string;
+  sourceLabel: string | null;
+  studentWorksheet: string;
+  teacherPack: string;
+  homework: string;
+  reserve: string;
+  vocabularyBank: string;
+  studentDriveUrl: string | null;
+  teacherDriveUrl: string | null;
+  credits: number | null;
+};
+
 export type TodayLesson = {
   scheduleId: string;
   time: string;
@@ -11,6 +24,7 @@ export type TodayLesson = {
   status: 'draft' | 'prepared' | 'done' | 'cancelled' | 'missing';
   note: string | null;
   summary: string | null;
+  package: StoredLessonPackage | null;
 };
 
 function todayString() {
@@ -25,10 +39,10 @@ function isoWeekday(date: string) {
 
 function demoLessons(): TodayLesson[] {
   return [
-    { scheduleId: 'd1', time: '14:00', student: 'Ученик 1', course: 'Spotlight 4', enrollmentId: 'e1', lessonId: 'l1', status: 'prepared', note: 'повторить чтение и грамматику', summary: null },
-    { scheduleId: 'd2', time: '16:00', student: 'Ученик 2', course: 'Spotlight 5', enrollmentId: 'e2', lessonId: null, status: 'missing', note: 'школа ушла вперёд', summary: null },
-    { scheduleId: 'd3', time: '18:00', student: 'Ученик 3', course: 'Spotlight 7', enrollmentId: 'e3', lessonId: null, status: 'missing', note: 'добавить говорение', summary: null },
-    { scheduleId: 'd4', time: '20:00', student: 'Ученик 4', course: 'Starlight 9', enrollmentId: 'e4', lessonId: null, status: 'missing', note: 'пришла срочная школьная тема', summary: null },
+    { scheduleId: 'd1', time: '14:00', student: 'Ученик 1', course: 'Spotlight 4', enrollmentId: 'e1', lessonId: 'l1', status: 'prepared', note: 'повторить чтение и грамматику', summary: null, package: null },
+    { scheduleId: 'd2', time: '16:00', student: 'Ученик 2', course: 'Spotlight 5', enrollmentId: 'e2', lessonId: null, status: 'missing', note: 'школа ушла вперёд', summary: null, package: null },
+    { scheduleId: 'd3', time: '18:00', student: 'Ученик 3', course: 'Spotlight 7', enrollmentId: 'e3', lessonId: null, status: 'missing', note: 'добавить говорение', summary: null, package: null },
+    { scheduleId: 'd4', time: '20:00', student: 'Ученик 4', course: 'Starlight 9', enrollmentId: 'e4', lessonId: null, status: 'missing', note: 'пришла срочная школьная тема', summary: null, package: null },
   ];
 }
 
@@ -47,13 +61,26 @@ export async function getTodayLessons() {
       l.id as "lessonId",
       COALESCE(l.status, 'missing') as status,
       COALESCE(sp.note, sp.topic) as note,
-      l.summary as summary
+      l.summary as summary,
+      CASE WHEN lp.lesson_id IS NULL THEN NULL ELSE json_build_object(
+        'title', lp.title,
+        'sourceLabel', lp.source_label,
+        'studentWorksheet', lp.student_worksheet,
+        'teacherPack', lp.teacher_pack,
+        'homework', lp.homework,
+        'reserve', lp.reserve,
+        'vocabularyBank', lp.vocabulary_bank,
+        'studentDriveUrl', lp.student_drive_url,
+        'teacherDriveUrl', lp.teacher_drive_url,
+        'credits', lp.credits::float8
+      ) END as package
     FROM schedule_rules sr
     JOIN enrollments e ON e.id = sr.enrollment_id AND e.active = true
     JOIN students s ON s.id = e.student_id AND s.active = true
     JOIN courses c ON c.id = e.course_id AND c.active = true
     LEFT JOIN school_positions sp ON sp.enrollment_id = e.id
     LEFT JOIN lessons l ON l.enrollment_id = e.id AND l.scheduled_date = ${date}::date AND l.lesson_type <> 'urgent'
+    LEFT JOIN lesson_packages lp ON lp.lesson_id = l.id
     WHERE sr.active = true AND sr.iso_weekday = ${weekday}
     ORDER BY sr.start_time ASC
   `;
