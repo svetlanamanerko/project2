@@ -1,16 +1,21 @@
 import { CalendarDays, CheckCircle2, ClipboardList, LifeBuoy, RefreshCw, Sparkles } from 'lucide-react';
+import Link from 'next/link';
 import { dbConfigured } from '@/lib/db';
-import { getRecycling, getTodayLessons, getUpcomingTasks } from '@/lib/data';
+import { getAppDateString, getLessonsForDate, getRecycling, getUpcomingTasks } from '@/lib/data';
 import { StatusPill } from '@/components/StatusPill';
 import { EmptyState } from '@/components/EmptyState';
-import { createTodayDrafts } from './actions';
+import { createTodayDrafts, createTomorrowDrafts } from './actions';
 import { LessonPlanButton } from './LessonPlanButton';
 import './hero.css';
 import './hero-sprig-fix.css';
 import './ai-plan.css';
+import './day-switch.css';
 
-export default async function TodayPage() {
-  const [lessons, recycling, tasks] = await Promise.all([getTodayLessons(), getRecycling(), getUpcomingTasks()]);
+export default async function TodayPage({ searchParams }: PageProps<'/'>) {
+  const day = (await searchParams).day;
+  const isTomorrow = day === 'tomorrow';
+  const targetDate = getAppDateString(isTomorrow ? 1 : 0);
+  const [lessons, recycling, tasks] = await Promise.all([getLessonsForDate(targetDate), getRecycling(), getUpcomingTasks()]);
   const ready = lessons.filter((x) => x.status === 'prepared').length;
   const missing = lessons.filter((x) => x.status === 'missing' || x.status === 'draft').length;
   const hasDb = dbConfigured();
@@ -52,16 +57,20 @@ export default async function TodayPage() {
         <div className="hero-desk-shadow"></div>
       </div>
     </header>
+    <nav className="day-switch" aria-label="День расписания">
+      <Link className={!isTomorrow ? 'active' : ''} href="/">Сегодня</Link>
+      <Link className={isTomorrow ? 'active' : ''} href="/?day=tomorrow">Завтра</Link>
+    </nav>
     {!hasDb && <div className="notice warning">PostgreSQL пока не подключена. Интерфейс уже работает; после подключения базы здесь появятся реальные ученики и расписание.</div>}
     <section className="summary-strip">
-      <div><CalendarDays/><span><strong>{lessons.length}</strong> уроков сегодня</span></div>
+      <div><CalendarDays/><span><strong>{lessons.length}</strong> {isTomorrow ? 'уроков завтра' : 'уроков сегодня'}</span></div>
       <div><CheckCircle2/><span><strong>{ready}</strong> подготовлено</span></div>
       <div><ClipboardList/><span><strong>{missing}</strong> требуют внимания</span></div>
-      <form action={createTodayDrafts}><button className="button primary" type="submit" disabled={!hasDb}><Sparkles size={18}/>Подготовить недостающие</button></form>
+      <form action={isTomorrow ? createTomorrowDrafts : createTodayDrafts}><button className="button primary" type="submit" disabled={!hasDb}><Sparkles size={18}/>{isTomorrow ? 'Подготовить недостающие на завтра' : 'Подготовить недостающие'}</button></form>
     </section>
     <div className="dashboard-grid">
-      <section className="panel lessons-panel"><div className="panel-title"><h2>Уроки на сегодня</h2><span className="soft-badge">по расписанию</span></div>
-        {lessons.length === 0 ? <EmptyState title="На сегодня пока пусто" text="Добавьте учеников, курсы и расписание — список соберётся автоматически."/> : <div className="lesson-list">{lessons.map((lesson) => <div className="lesson-entry" key={lesson.scheduleId}><article className="lesson-row"><time>{lesson.time}</time><div className="course-icon"><ClipboardList size={20}/></div><div className="lesson-main"><strong>{lesson.course}</strong><span>{lesson.student}{lesson.note ? ` · ${lesson.note}` : ''}</span></div><StatusPill status={lesson.status}/></article><LessonPlanButton enrollmentId={lesson.enrollmentId} lessonId={lesson.lessonId} initialPlan={lesson.summary} initialPackage={lesson.package}/></div>)}</div>}
+      <section className="panel lessons-panel"><div className="panel-title"><h2>{isTomorrow ? 'Уроки на завтра' : 'Уроки на сегодня'}</h2><span className="soft-badge">по расписанию</span></div>
+        {lessons.length === 0 ? <EmptyState title={isTomorrow ? 'На завтра пока ничего не запланировано' : 'На сегодня пока пусто'} text={isTomorrow ? 'Расписание следующего календарного дня пока свободно.' : 'Добавьте учеников, курсы и расписание — список соберётся автоматически.'}/> : <div className="lesson-list">{lessons.map((lesson) => <div className="lesson-entry" key={lesson.scheduleId}><article className="lesson-row"><time>{lesson.time}</time><div className="course-icon"><ClipboardList size={20}/></div><div className="lesson-main"><strong>{lesson.course}</strong><span>{lesson.student}{lesson.note ? ` · ${lesson.note}` : ''}</span></div><StatusPill status={lesson.status}/></article><LessonPlanButton enrollmentId={lesson.enrollmentId} lessonId={lesson.lessonId} initialPlan={lesson.summary} initialPackage={lesson.package}/></div>)}</div>}
       </section>
       <aside className="right-stack">
         <section className="panel"><div className="panel-title"><h2><RefreshCw size={18}/>Очередь повторения</h2><span className="count-badge">{recycling.length}</span></div>{recycling.length ? <ul className="pretty-list">{recycling.map((x) => <li key={x}>{x}</li>)}</ul> : <p className="muted small">Пока нет активных пунктов.</p>}</section>

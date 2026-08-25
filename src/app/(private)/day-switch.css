@@ -1,0 +1,4 @@
+.day-switch{display:inline-flex;gap:4px;margin:0 0 18px;padding:4px;border:1px solid var(--line);border-radius:14px;background:rgba(255,255,255,.82);box-shadow:0 8px 22px rgba(66,58,125,.06)}
+.day-switch a{min-width:105px;padding:9px 18px;border-radius:10px;color:#69738f;font-size:13px;font-weight:800;text-align:center;transition:background .15s ease,color .15s ease,box-shadow .15s ease}
+.day-switch a:hover{color:#5f55d3;background:#f6f3ff}.day-switch a.active{color:#fff;background:linear-gradient(110deg,#6688f5,#7561ec);box-shadow:0 6px 14px rgba(91,83,217,.2)}
+@media(max-width:640px){.day-switch{display:grid;grid-template-columns:1fr 1fr;width:100%}.day-switch a{min-width:0}}

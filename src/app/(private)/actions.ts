@@ -6,6 +6,7 @@ import path from 'node:path';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { db, dbConfigured } from '@/lib/db';
+import { getAppDateString, isoWeekday } from '@/lib/data';
 
 function requireDb() {
   if (!dbConfigured()) throw new Error('Сначала подключите PostgreSQL');
@@ -190,12 +191,9 @@ export async function createUrgentRequest(formData: FormData) {
   redirect('/urgent?created=1');
 }
 
-export async function createTodayDrafts() {
+async function createDraftsForDate(date: string) {
   const sql = requireDb();
-  const zone = process.env.APP_TIMEZONE || 'Europe/Moscow';
-  const date = new Intl.DateTimeFormat('sv-SE', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
-  const d = new Date(`${date}T12:00:00Z`).getUTCDay();
-  const weekday = d === 0 ? 7 : d;
+  const weekday = isoWeekday(date);
   const rows = await sql<Array<{ enrollmentId: string; startTime: string; course: string }>>`
     SELECT sr.enrollment_id as "enrollmentId", to_char(sr.start_time,'HH24:MI') as "startTime", c.title as course
     FROM schedule_rules sr JOIN enrollments e ON e.id=sr.enrollment_id JOIN courses c ON c.id=e.course_id
@@ -209,4 +207,12 @@ export async function createTodayDrafts() {
     `;
   }
   revalidatePath('/');
+}
+
+export async function createTodayDrafts() {
+  await createDraftsForDate(getAppDateString());
+}
+
+export async function createTomorrowDrafts() {
+  await createDraftsForDate(getAppDateString(1));
 }
