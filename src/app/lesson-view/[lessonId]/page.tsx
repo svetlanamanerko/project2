@@ -4,6 +4,7 @@ import { getLessonDesignData } from '@/lib/design-data';
 import { normalizeDesignStyle } from '@/lib/design-styles';
 import { InteractiveLesson } from '@/app/(private)/lessons/[lessonId]/interactive/InteractiveLesson';
 import { LessonJsonPlayer } from '@/app/(private)/lessons/[lessonId]/interactive/LessonJsonPlayer';
+import { LessonRendererEnhancer } from './LessonRendererEnhancer';
 
 export default async function StudentLessonPage({
   params,
@@ -19,7 +20,8 @@ export default async function StudentLessonPage({
   const designStyle = normalizeDesignStyle(query.style);
 
   if (lesson.interactiveLesson) {
-    return <div className="lesson-json-v2" data-design-style={designStyle}>
+    return <div className="lesson-json-v2 lesson-json-v3" data-design-style={designStyle} data-renderer-version="3">
+      <LessonRendererEnhancer />
       <LessonJsonPlayer
         lessonId={lesson.lessonId}
         student={lesson.student}
