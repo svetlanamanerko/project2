@@ -9,15 +9,17 @@ export default async function InteractiveLessonPage({ params }: { params: Promis
   if (!lesson) notFound();
 
   if (lesson.interactiveLesson) {
-    return <LessonJsonPlayer
-      lessonId={lesson.lessonId}
-      student={lesson.student}
-      course={lesson.course}
-      title={lesson.title}
-      sourceLabel={lesson.sourceLabel}
-      lesson={lesson.interactiveLesson}
-      sourceAvailable={lesson.sourceAvailable}
-    />;
+    return <div className="lesson-json-v2" data-design-style="teen-study">
+      <LessonJsonPlayer
+        lessonId={lesson.lessonId}
+        student={lesson.student}
+        course={lesson.course}
+        title={lesson.title}
+        sourceLabel={lesson.sourceLabel}
+        lesson={lesson.interactiveLesson}
+        sourceAvailable={lesson.sourceAvailable}
+      />
+    </div>;
   }
 
   return <InteractiveLesson

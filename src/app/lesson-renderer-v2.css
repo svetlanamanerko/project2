@@ -1,0 +1,128 @@
+/* Workshop Interactive Renderer V2 — scoped to structured Lesson JSON pages only. */
+.lesson-json-v2{min-height:100vh}
+.lesson-json-v2 [class*="content"]{max-width:1240px}
+.lesson-json-v2 [class*="exerciseList"]{gap:24px}
+.lesson-json-v2 [class*="exerciseCard"]{position:relative;isolation:isolate;overflow:hidden}
+.lesson-json-v2 [class*="exerciseCard"]::before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:linear-gradient(180deg,#6c63ff,#62b9ff);opacity:.9;z-index:2}
+.lesson-json-v2 [class*="exerciseHead"]{padding:18px 24px 15px 28px}
+.lesson-json-v2 [class*="exerciseHead"]>div>span{display:inline-flex;width:max-content;align-items:center;min-height:25px;padding:0 10px;border-radius:999px;background:#eef3ff;color:#3157b8;font-size:10px;letter-spacing:.075em}
+.lesson-json-v2 [class*="exerciseHead"] h3{font-size:22px;letter-spacing:-.015em}
+.lesson-json-v2 [class*="exerciseHead"] p{max-width:860px;font-size:14px}
+.lesson-json-v2 [class*="exerciseBody"]{padding:22px 26px 24px 30px}
+.lesson-json-v2 [class*="exerciseFooter"]{padding:0 26px 22px 30px}
+.lesson-json-v2 [class*="exerciseFooter"] button{min-height:46px;border-radius:14px;padding:0 17px;font-size:12px}
+.lesson-json-v2 [class*="checkButton"]{box-shadow:0 7px 16px rgba(45,105,222,.11)}
+
+/* Speaking becomes a compact challenge stage rather than a generic text card. */
+.lesson-json-v2 [class*="exerciseCard"]:has([class*="speakingCard"]){border-color:#d8c8f1;background:linear-gradient(135deg,#fff 0%,#fffaff 48%,#f6f1ff 100%)}
+.lesson-json-v2 [class*="exerciseCard"]:has([class*="speakingCard"])::before{width:8px;background:linear-gradient(180deg,#8b5cf6,#ec4899)}
+.lesson-json-v2 [class*="exerciseCard"]:has([class*="speakingCard"]) [class*="exerciseHead"]{background:linear-gradient(90deg,#faf4ff,#fff9ef);border-bottom-color:#eadff2}
+.lesson-json-v2 [class*="exerciseCard"]:has([class*="speakingCard"]) [class*="exerciseHead"]>div>span{background:#efe5ff;color:#7443a8}
+.lesson-json-v2 [class*="speakingCard"]{grid-template-columns:minmax(230px,.72fr) minmax(340px,1.28fr);align-items:start;gap:18px;padding:0;border:0;background:transparent}
+.lesson-json-v2 [class*="speakingCard"]>h4{grid-column:1/-1;margin:0;padding:18px 20px;border-radius:17px;background:linear-gradient(115deg,#6e55d8,#9b63de 55%,#d871b1);color:#fff;font-size:20px;line-height:1.35;box-shadow:0 12px 24px rgba(105,74,166,.16)}
+.lesson-json-v2 [class*="supportBlock"]{min-height:100%;padding:17px;border:1px solid #e5d9f0;border-radius:16px;background:#fff}
+.lesson-json-v2 [class*="phraseChips"]{align-content:start;padding:4px 0}
+.lesson-json-v2 [class*="phraseChips"] span{padding:9px 11px;border-color:#ddcff0;background:#faf7ff;font-size:11px}
+.lesson-json-v2 [class*="speakingCard"] label{grid-column:1/-1;margin-top:0;padding:15px 17px;border:1px solid #eadced;border-radius:17px;background:rgba(255,255,255,.8)}
+.lesson-json-v2 [class*="speakingCard"] textarea{min-height:72px;max-height:150px;background:#fff}
+
+/* Gap fill looks like a real working sheet: bank first, text second. */
+.lesson-json-v2 [class*="exerciseCard"]:has([class*="gapWrap"])::before{background:linear-gradient(180deg,#ff9c47,#ffd15c)}
+.lesson-json-v2 [class*="exerciseCard"]:has([class*="gapWrap"]) [class*="exerciseHead"]>div>span{background:#fff0df;color:#c96b21}
+.lesson-json-v2 [class*="gapWrap"]{display:grid;gap:20px}
+.lesson-json-v2 [class*="bankBox"]{border-radius:18px;padding:16px 18px;background:linear-gradient(135deg,#eef6ff,#f4f0ff);box-shadow:0 8px 20px rgba(58,95,160,.07)}
+.lesson-json-v2 [class*="bankHead"]{font-size:13px}
+.lesson-json-v2 [class*="wordBank"] button{min-height:42px;padding:9px 14px;border-radius:13px;font-size:12.5px;transition:transform .12s ease,box-shadow .12s ease}
+.lesson-json-v2 [class*="wordBank"] button:hover{transform:translateY(-2px);box-shadow:0 7px 15px rgba(45,75,126,.12)}
+.lesson-json-v2 [class*="flowText"]{margin-top:0;padding:20px 22px;border:1px solid #e6e9f0;border-radius:18px;background:#fff;font-size:17px;line-height:2.25;box-shadow:0 3px 12px rgba(40,56,88,.035)}
+.lesson-json-v2 [class*="flowText"] input{height:38px;min-width:90px;background:#f6faff}
+
+/* Dropdown / grammar practice resembles inline workbook lines, not generic controls. */
+.lesson-json-v2 [class*="exerciseCard"]:has([class*="dropdownList"])::before{background:linear-gradient(180deg,#16a4c7,#55d2b4)}
+.lesson-json-v2 [class*="exerciseCard"]:has([class*="dropdownList"]) [class*="exerciseHead"]>div>span{background:#e4f9f7;color:#147d83}
+.lesson-json-v2 [class*="dropdownList"]{gap:8px;padding:5px 0}
+.lesson-json-v2 [class*="dropdownRow"]{min-height:54px;padding:9px 13px;border-bottom:1px dashed #d9e1ea;font-size:15.5px}
+.lesson-json-v2 [class*="dropdownRow"]:last-child{border-bottom:0}
+.lesson-json-v2 [class*="itemNumber"]{width:30px;height:30px;flex-basis:30px;border-radius:10px;background:#e9f8f7;color:#18757e}
+.lesson-json-v2 [class*="selectWrap"]{min-height:38px;background:#effafa;border-bottom-color:#44b9bb}
+
+/* Choice / T-F-NS becomes big click targets. */
+.lesson-json-v2 [class*="exerciseCard"]:has([class*="statementList"])::before{background:linear-gradient(180deg,#3182f6,#7c68ee)}
+.lesson-json-v2 [class*="statementCard"]{padding:17px 18px;border-radius:17px;background:linear-gradient(180deg,#fff,#fbfcff)}
+.lesson-json-v2 [class*="statementCard"] p{font-size:15px}
+.lesson-json-v2 [class*="statementOptions"] button,.lesson-json-v2 [class*="choiceGrid"] button{min-height:50px;border-radius:14px;font-size:12.5px;box-shadow:0 3px 10px rgba(44,62,99,.045)}
+
+/* Matching reads as two physical card decks. */
+.lesson-json-v2 [class*="exerciseCard"]:has([class*="matchGrid"])::before{background:linear-gradient(180deg,#19a974,#67c95d)}
+.lesson-json-v2 [class*="exerciseCard"]:has([class*="matchGrid"]) [class*="exerciseHead"]>div>span{background:#e8f8ef;color:#278257}
+.lesson-json-v2 [class*="matchGrid"]{gap:24px;padding:3px}
+.lesson-json-v2 [class*="matchColumn"]{padding:14px;border-radius:18px;background:#f7faf9;border:1px solid #e0ece5}
+.lesson-json-v2 [class*="matchColumn"]:first-child{background:#f4f8ff;border-color:#dde8f7}
+.lesson-json-v2 [class*="matchColumn"] button{min-height:60px;border-radius:14px;padding:13px 15px;font-size:13px;box-shadow:0 4px 10px rgba(40,67,83,.045)}
+
+/* Sorting gets real large drop zones. */
+.lesson-json-v2 [class*="exerciseCard"]:has([class*="sortWrap"])::before{background:linear-gradient(180deg,#f59e0b,#ef5da8)}
+.lesson-json-v2 [class*="exerciseCard"]:has([class*="sortWrap"]) [class*="exerciseHead"]>div>span{background:#fff0dc;color:#b96b11}
+.lesson-json-v2 [class*="sortGroups"]{gap:18px}
+.lesson-json-v2 [class*="sortGroup"]{min-height:230px;padding:18px;border-width:2px;border-radius:20px;background:linear-gradient(180deg,#fbfdff,#f7fbff)}
+.lesson-json-v2 [class*="sortGroup"] h4{padding-bottom:12px;border-bottom:1px dashed #b9d7f8;font-size:14px}
+.lesson-json-v2 [class*="groupItems"] button{min-height:40px;border-radius:12px;font-size:12px}
+
+/* Open answers are compact notebook areas, not giant blank slabs. */
+.lesson-json-v2 [class*="exerciseCard"]:has([class*="openList"])::before{background:linear-gradient(180deg,#6078ea,#8da0ff)}
+.lesson-json-v2 [class*="openList"]{grid-template-columns:repeat(2,minmax(0,1fr));gap:15px}
+.lesson-json-v2 [class*="openList"] label{padding:15px;border:1px solid #e2e7f2;border-radius:16px;background:#fafcff}
+.lesson-json-v2 [class*="openList"] textarea{min-height:70px;background:#fff}
+
+/* Reading/reference cards are source-first. */
+.lesson-json-v2 [class*="exerciseCard"]:has([class*="readingPrompt"])::before{background:linear-gradient(180deg,#a2683d,#dfb16c)}
+.lesson-json-v2 [class*="readingPrompt"]{padding:24px 26px;border-left:0;border-radius:18px;background:linear-gradient(135deg,#fffdf7,#f8f1e5);color:#3b332d;font-family:Georgia,'Times New Roman',serif;font-size:16px;line-height:1.8;box-shadow:inset 0 0 0 1px #eadfce}
+.lesson-json-v2 [class*="sourceButton"]{min-height:42px;padding:0 14px;border-radius:13px;font-size:12px}
+
+/* Fullscreen player should feel like a lesson stage. */
+.lesson-json-v2 [class*="fullscreenPlayer"]{background:radial-gradient(circle at 8% 14%,rgba(129,184,255,.14),transparent 24%),radial-gradient(circle at 90% 84%,rgba(171,129,255,.12),transparent 26%),#f6f8fc}
+.lesson-json-v2 [class*="playerTopbar"]{padding:13px 28px;box-shadow:0 8px 24px rgba(44,57,91,.06)}
+.lesson-json-v2 [class*="playerCanvas"]{max-width:1360px;padding-top:34px}
+.lesson-json-v2 [class*="playerCanvas"] [class*="exerciseCard"]{min-height:auto;border-radius:28px;box-shadow:0 26px 60px rgba(43,56,91,.12)}
+.lesson-json-v2 [class*="playerCanvas"] [class*="exerciseHead"] h3{font-size:30px}
+.lesson-json-v2 [class*="playerCanvas"] [class*="exerciseBody"]{padding:34px 36px}
+
+/* Bright Kids — genuinely playful composition, not just a pastel border. */
+.lesson-json-v2[data-design-style="bright-kids"] [class*="page"],
+.lesson-json-v2[data-design-style="bright-kids"] [class*="fullscreenPlayer"]{background:radial-gradient(circle at 8% 6%,#fff6b6 0 8%,transparent 22%),radial-gradient(circle at 95% 16%,#ddf6ff 0 9%,transparent 24%),linear-gradient(180deg,#fffef8,#f5faff)}
+.lesson-json-v2[data-design-style="bright-kids"] [class*="exerciseCard"]{border-width:2px;border-radius:26px;box-shadow:0 13px 28px rgba(38,77,128,.07)}
+.lesson-json-v2[data-design-style="bright-kids"] [class*="exerciseHead"]{background:linear-gradient(90deg,#fffefa,#f8fbff)}
+.lesson-json-v2[data-design-style="bright-kids"] [class*="exerciseHead"] h3{font-size:23px;color:#174d91}
+.lesson-json-v2[data-design-style="bright-kids"] [class*="exerciseHead"]>div>span{font-size:10px;font-weight:950}
+.lesson-json-v2[data-design-style="bright-kids"] [class*="exerciseBody"]{font-size:1.03em}
+.lesson-json-v2[data-design-style="bright-kids"] [class*="exerciseFooter"] [class*="checkButton"]{background:linear-gradient(135deg,#2775f4,#5c8dff);color:#fff;border-color:#2775f4}
+
+/* Teen Study — denser and more efficient for older learners. */
+.lesson-json-v2[data-design-style="teen-study"] [class*="exerciseCard"]{border-radius:17px;box-shadow:0 7px 20px rgba(38,54,105,.045)}
+.lesson-json-v2[data-design-style="teen-study"] [class*="exerciseHead"]{padding-top:15px;padding-bottom:13px}
+.lesson-json-v2[data-design-style="teen-study"] [class*="exerciseHead"] h3{font-size:19px}
+.lesson-json-v2[data-design-style="teen-study"] [class*="exerciseBody"]{padding-top:17px;padding-bottom:19px}
+
+/* Reading Magazine — editorial hierarchy. */
+.lesson-json-v2[data-design-style="reading-magazine"] [class*="page"]{background:linear-gradient(90deg,#f4ede3 0 4%,#fbf8f1 4% 96%,#f4ede3 96%)}
+.lesson-json-v2[data-design-style="reading-magazine"] [class*="exerciseCard"]{border-radius:12px;border-color:#d8c7ae;box-shadow:0 8px 18px rgba(85,61,39,.055)}
+.lesson-json-v2[data-design-style="reading-magazine"] [class*="exerciseCard"]::before{width:3px;background:#9b6b48}
+.lesson-json-v2[data-design-style="reading-magazine"] [class*="exerciseHead"]{background:#fffdf8;border-bottom-color:#e8ddce}
+.lesson-json-v2[data-design-style="reading-magazine"] [class*="exerciseHead"] h3{font-family:Georgia,'Times New Roman',serif;font-size:24px;color:#49372c}
+.lesson-json-v2[data-design-style="reading-magazine"] [class*="exerciseHead"] p{font-family:Georgia,'Times New Roman',serif;color:#65564b}
+.lesson-json-v2[data-design-style="reading-magazine"] [class*="exerciseHead"]>div>span{background:#f0e4d6;color:#8a5939}
+
+/* Grammar Visual — contrast-board feel. */
+.lesson-json-v2[data-design-style="grammar-visual"] [class*="exerciseCard"]{border-width:2px;border-color:#acd9df;border-radius:20px}
+.lesson-json-v2[data-design-style="grammar-visual"] [class*="exerciseHead"]{background:linear-gradient(90deg,#eaf9ff 0 48%,#f2faeb 48% 100%)}
+.lesson-json-v2[data-design-style="grammar-visual"] [class*="exerciseHead"] h3{color:#17647a}
+.lesson-json-v2[data-design-style="grammar-visual"] [class*="exerciseHead"]>div>span{background:#daf2f7;color:#166a7c}
+.lesson-json-v2[data-design-style="grammar-visual"] [class*="exerciseBody"]{background:linear-gradient(90deg,rgba(235,249,253,.36),rgba(244,251,238,.36))}
+
+@media(max-width:800px){
+  .lesson-json-v2 [class*="speakingCard"]{grid-template-columns:1fr}
+  .lesson-json-v2 [class*="openList"]{grid-template-columns:1fr}
+  .lesson-json-v2 [class*="flowText"]{font-size:15px;padding:16px}
+  .lesson-json-v2 [class*="exerciseHead"] h3{font-size:20px}
+  .lesson-json-v2 [class*="playerCanvas"] [class*="exerciseBody"]{padding:22px 18px}
+}
