@@ -31,7 +31,7 @@ import type {
 } from '@/lib/lesson-json';
 import styles from './lesson-player-v2.module.css';
 
-export type LessonPlayerProps = {
+type Props = {
   lessonId: string;
   student: string;
   course: string;
@@ -42,7 +42,6 @@ export type LessonPlayerProps = {
   designStyle?: DesignStyleId;
   standalone?: boolean;
   cleanMode?: boolean;
-  sceneMode?: boolean;
 };
 
 type SavedState = {
@@ -348,9 +347,9 @@ function ExerciseScene({ exercise, responses, setResponses, feedback, completed,
   </article>;
 }
 
-export function LessonPlayerV2(props: LessonPlayerProps) {
+export function LessonPlayerV2(props: Props) {
   const designStyle = props.designStyle || 'teen-study';
-  const storageKey = `masterurok:player-${props.sceneMode ? 'v3' : 'v2'}:${props.lessonId}`;
+  const storageKey = `masterurok:player-v2:${props.lessonId}`;
   const [sectionId, setSectionId] = useState<LessonSectionId>('core');
   const [responses, setResponses] = useState<Record<string, unknown>>({});
   const [completed, setCompleted] = useState<Set<string>>(new Set());
@@ -408,16 +407,16 @@ export function LessonPlayerV2(props: LessonPlayerProps) {
   }, [completed, loaded, props.cleanMode, responses, storageKey]);
 
   useEffect(() => {
-    if (!playerMode && !props.sceneMode) return;
+    if (!playerMode) return;
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       if (target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return;
       if (event.key === 'ArrowRight') setPlayerIndex((index) => Math.min(currentExercises.length - 1, index + 1));
       if (event.key === 'ArrowLeft') setPlayerIndex((index) => Math.max(0, index - 1));
-      if (event.key === 'Escape' && playerMode) leavePlayer();
+      if (event.key === 'Escape') leavePlayer();
     };
     window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey);
-  }, [currentExercises.length, playerMode, props.sceneMode]);
+  }, [currentExercises.length, playerMode]);
 
   const completedCount = allExercises.filter((exercise) => completed.has(exercise.id)).length;
   const percent = allExercises.length ? Math.round((completedCount / allExercises.length) * 100) : 0;
@@ -531,14 +530,7 @@ export function LessonPlayerV2(props: LessonPlayerProps) {
 
       <nav className={styles.sectionNav}>{sections.map((section) => <button type="button" key={section.id} className={section.id === sectionId ? styles.activeSection : ''} onClick={() => { setSectionId(section.id); setPlayerIndex(0); }}><span>{sectionLabels[section.id]}</span><b>{section.exercises.length}</b></button>)}</nav>
 
-      {props.sceneMode && currentExercise ? <section className={styles.lessonFlow}>
-        <nav className={styles.playerBar} aria-label="Навигация по заданиям">
-          <button type="button" disabled={playerIndex === 0} onClick={() => setPlayerIndex((index) => Math.max(0, index - 1))}><ArrowLeft size={20}/> Назад</button>
-          <div className={styles.taskProgress}><div><strong>Task {playerIndex + 1}</strong><span>из {currentExercises.length}</span></div><div className={styles.dots}>{currentExercises.map((exercise, index) => <button type="button" key={exercise.id} onClick={() => setPlayerIndex(index)} className={`${index === playerIndex ? styles.currentDot : ''} ${completed.has(exercise.id) ? styles.doneDot : ''}`} aria-label={`Task ${index + 1}`}/>)}</div></div>
-          <button type="button" disabled={playerIndex >= currentExercises.length - 1} onClick={() => setPlayerIndex((index) => Math.min(currentExercises.length - 1, index + 1))}>Вперёд <ArrowRight size={20}/></button>
-        </nav>
-        <div>{renderExercise(currentExercise)}</div>
-      </section> : <section className={styles.lessonFlow}>{currentExercises.map(renderExercise)}</section>}
+      <section className={styles.lessonFlow}>{currentExercises.map(renderExercise)}</section>
     </main>
 
     <SourcePanel resource={activeResource} mode={sourceMode} zoom={sourceZoom} setMode={setSourceMode} setZoom={setSourceZoom}/>
