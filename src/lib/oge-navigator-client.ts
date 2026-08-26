@@ -1,5 +1,5 @@
 import 'server-only';
-import { excludeUsedQids } from '@/lib/learning-context-utils';
+import { DIAGNOSTIC_OGE_SECTIONS, excludeUsedQids } from '@/lib/learning-context-utils';
 
 export type OgeTask = { qid: string; section?: string; preview?: string; topic?: string; subtopic?: string; kesCode?: string | null; answerType?: string; hasMedia?: boolean; [key: string]: unknown };
 export type OgeTaskDetail = { task: OgeTask & { conditionText?: string; contentText?: string; topics?: Array<{ name?: string; slug?: string }>; classifications?: Record<string,string> }; group: unknown | null };
@@ -26,6 +26,27 @@ export async function getOgeTask(qid: string): Promise<OgeTaskDetail | null> {
 }
 
 export async function getOgeCandidatesForStudent(usedQids: string[], intent: Record<string, unknown>) {
+  const explicitValue = intent.qids ?? intent.explicitQids;
+  const explicitQids = (Array.isArray(explicitValue) ? explicitValue : typeof explicitValue === 'string' ? explicitValue.split(/[\s,;]+/) : [])
+    .map(String).map((qid) => qid.trim()).filter(Boolean);
+  const explicitResults = await Promise.allSettled(explicitQids.map((qid) => getOgeTask(qid)));
+  const explicitItems = explicitResults
+    .flatMap((result) => result.status === 'fulfilled' && result.value ? [result.value.task] : []);
+
+  if (intent.diagnosticMode === true) {
+    const sectionResults = await Promise.all(DIAGNOSTIC_OGE_SECTIONS.map((section) => searchOgeTasks({ section, pageSize: 4 })));
+    const available = explicitItems.length > 0 || sectionResults.some((result) => result.available);
+    const configured = explicitItems.length > 0 || sectionResults.some((result) => result.configured);
+    const combined = [...explicitItems, ...sectionResults.flatMap((result) => result.items)];
+    const unique = Array.from(new Map(combined.map((item) => [item.qid, item])).values());
+    return { configured, available, items: excludeUsedQids(unique, usedQids).slice(0, 10) };
+  }
+
   const result = await searchOgeTasks({ topic: String(intent.topic || '') || undefined, subtopic: String(intent.subtopic || '') || undefined, section: String(intent.section || intent.skill || '') || undefined, q: String(intent.query || '') || undefined, pageSize: 10 });
-  return { ...result, items: excludeUsedQids(result.items, usedQids).slice(0, 10) };
+  const unique = Array.from(new Map([...explicitItems, ...result.items].map((item) => [item.qid, item])).values());
+  return {
+    configured: result.configured || explicitItems.length > 0,
+    available: result.available || explicitItems.length > 0,
+    items: excludeUsedQids(unique, usedQids).slice(0, 10),
+  };
 }

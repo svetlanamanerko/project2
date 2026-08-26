@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { getStudentLearningContext } from '@/lib/student-learning-context';
 import { getRelevantCourseMaterials } from '@/lib/relevant-course-materials';
 import { getOgeCandidatesForStudent } from '@/lib/oge-navigator-client';
+import { isDiagnosticIntent, resolveCurrentAndNext } from '@/lib/learning-context-utils';
 
 const EXTERNAL_CONTEXT_TIMEOUT_MS = 9_000;
 
@@ -29,7 +30,6 @@ export async function buildLessonContext(studentId: string, options?: { enrollme
     : studentProgress.courses[0];
   if (!course) throw new Error('Активный курс не найден');
 
-  const currentId = course.currentPosition?.mapItemId;
   const items = await db()<Array<{
     id: string;
     position: number;
@@ -41,15 +41,21 @@ export async function buildLessonContext(studentId: string, options?: { enrollme
     SELECT id,position,stage_label as stage,lesson_label as lesson,title,intent
     FROM course_map_items WHERE course_id=${course.courseId} ORDER BY position
   `;
-  const currentIndex = currentId ? items.findIndex((item) => item.id === currentId) : -1;
-  const next = items[Math.max(0, currentIndex + 1)] || null;
-  const lessonIntent = next?.intent && Object.keys(next.intent).length
-    ? next.intent
-    : {
-        topic: next?.title || course.currentPosition?.stage || '',
-        stage: next?.stage || course.currentPosition?.stage || '',
-        lesson: next?.lesson || course.currentPosition?.lesson || '',
-      };
+  const coursePlan = resolveCurrentAndNext(items, course.currentPosition, studentProgress.recentLessons, course.enrollmentId);
+  const currentStage = coursePlan.current?.stage || course.currentPosition?.stage || '';
+  const currentLesson = coursePlan.current?.lesson || course.currentPosition?.lesson || '';
+  const explicitIntent = coursePlan.current?.intent && Object.keys(coursePlan.current.intent).length ? coursePlan.current.intent : {};
+  const lessonIntent = {
+    ...explicitIntent,
+    topic: String(explicitIntent.topic || coursePlan.current?.title || currentStage),
+    stage: currentStage,
+    lesson: currentLesson,
+    studentName: studentProgress.student.name,
+    courseTitle: course.title,
+    recentHistory: studentProgress.recentLessons.slice(0, 3).map((item) => `${item.stage}${item.lesson ? ` / ${item.lesson}` : ''} — ${item.status}`).join('; '),
+    nextSteps: studentProgress.nextSteps.join('; '),
+  };
+  const diagnosticMode = isDiagnosticIntent(lessonIntent);
 
   const driveController = new AbortController();
   const drivePromise = withTimeout(
@@ -69,7 +75,7 @@ export async function buildLessonContext(studentId: string, options?: { enrollme
   const isOge = /\b(oge|огэ)\b/i.test(course.title);
   const navigatorPromise = withTimeout(
     isOge
-      ? getOgeCandidatesForStudent(studentProgress.usedQids, lessonIntent)
+      ? getOgeCandidatesForStudent(studentProgress.usedQids, { ...lessonIntent, diagnosticMode })
       : Promise.resolve({ configured: navigatorConfigured, available: true, items: [] }),
     'OGE Navigator',
   );
@@ -91,7 +97,7 @@ export async function buildLessonContext(studentId: string, options?: { enrollme
 
   return {
     studentProgress: { student: studentProgress.student, course, currentPosition: course.currentPosition },
-    coursePlan: { current: currentIndex >= 0 ? items[currentIndex] : null, next },
+    coursePlan,
     lessonIntent,
     driveMaterials,
     driveStatus: { available: driveAvailable },

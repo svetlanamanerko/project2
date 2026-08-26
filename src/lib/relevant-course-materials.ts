@@ -1,7 +1,7 @@
 import 'server-only';
 import { db } from '@/lib/db';
 import { refreshGoogleAccessToken } from '@/lib/google-drive';
-import { rankByIntent } from '@/lib/learning-context-utils';
+import { materialMatchScore, prioritizeMaterialBranches, rankByIntent } from '@/lib/learning-context-utils';
 
 type DriveCandidate = {
   id: string;
@@ -15,6 +15,7 @@ const FOLDER = 'application/vnd.google-apps.folder';
 const DRIVE_REQUEST_TIMEOUT_MS = 6_000;
 const MAX_DRIVE_REQUESTS = 40;
 const MAX_DRIVE_FILES = 500;
+const TARGETED_RESULT_MIN = 3;
 
 async function listFolder(token: string, parentId: string, signal: AbortSignal | undefined, budget: { requests: number }) {
   const items = new Map<string, Omit<DriveCandidate, 'path'>>();
@@ -75,8 +76,9 @@ export async function getRelevantCourseMaterials({
   const token = await refreshGoogleAccessToken();
   const found = new Map<string, DriveCandidate>();
   const visitedFolders = new Set<string>();
-  const pending = [{ id: courseFolderId, path: '' }];
+  const pending = [{ id: courseFolderId, path: '', score: 0 }];
   const budget = { requests: 0 };
+  let targetedMatchCount = 0;
 
   while (pending.length && budget.requests < MAX_DRIVE_REQUESTS && found.size < MAX_DRIVE_FILES) {
     signal?.throwIfAborted();
@@ -86,9 +88,15 @@ export async function getRelevantCourseMaterials({
 
     for (const item of await listFolder(token, folder.id, signal, budget)) {
       const path = [folder.path, item.name].filter(Boolean).join(' / ');
-      if (item.mimeType === FOLDER) pending.push({ id: item.id, path });
-      else if (found.size < MAX_DRIVE_FILES) found.set(item.id, { ...item, path });
+      const score = materialMatchScore(path, lessonIntent);
+      if (item.mimeType === FOLDER) pending.push({ id: item.id, path, score });
+      else if (found.size < MAX_DRIVE_FILES) {
+        found.set(item.id, { ...item, path });
+        if (score > 0) targetedMatchCount += 1;
+      }
     }
+    pending.splice(0, pending.length, ...prioritizeMaterialBranches(pending, lessonIntent));
+    if (targetedMatchCount >= TARGETED_RESULT_MIN && folder.score > 0) break;
   }
 
   if (pending.length) console.warn(`[lesson-context] Google Drive scan stopped at ${budget.requests} requests and ${found.size} files`);
