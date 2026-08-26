@@ -184,6 +184,7 @@ export type StudentDetails = {
     course: string;
     label: string;
     category: string;
+    priority: number;
   }>;
 };
 
@@ -254,7 +255,7 @@ export async function getStudentDetails(studentId: string): Promise<StudentDetai
       LIMIT 30
     `,
     sql<StudentDetails['recycling']>`
-      SELECT r.id, r.enrollment_id as "enrollmentId", c.title as course, r.label, r.category
+      SELECT r.id, r.enrollment_id as "enrollmentId", c.title as course, r.label, r.category, r.priority::int as priority
       FROM recycling_items r
       JOIN enrollments e ON e.id=r.enrollment_id
       JOIN courses c ON c.id=e.course_id

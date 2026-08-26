@@ -10,6 +10,7 @@ import { getAppDateString, isoWeekday } from '@/lib/data';
 import { getGoogleDriveCourseFolder } from '@/lib/google-drive-source-folders';
 import { generateStudentLearningAdvice } from '@/lib/student-advice';
 import { validDuration, validStartTime, validWeekday } from '@/lib/schedule-utils';
+import { normalizeLearningLabel, validLearningPriority } from '@/lib/learning-queue-utils';
 
 function requireDb() {
   if (!dbConfigured()) throw new Error('Сначала подключите PostgreSQL');
@@ -118,14 +119,20 @@ export async function generateStudentAdviceAction(formData: FormData) {
 export async function addLearningPlanItem(formData: FormData) {
   const studentId = String(formData.get('studentId') || '').trim();
   const enrollmentId = String(formData.get('enrollmentId') || '').trim();
-  const label = String(formData.get('label') || '').trim();
+  const label = normalizeLearningLabel(String(formData.get('label') || ''));
   const recommendationId = String(formData.get('recommendationId') || '').trim();
+  const fromStudentCard = formData.get('source') === 'student-card';
   if (!studentId || !enrollmentId || !label) return;
   const sql = requireDb();
   const valid = await sql<Array<{ id: string }>>`
     SELECT id FROM enrollments WHERE id=${enrollmentId} AND student_id=${studentId} AND active=true LIMIT 1
   `;
   if (!valid.length) return;
+  const duplicate = await sql<Array<{ id: string }>>`
+    SELECT id FROM learning_plan_items
+    WHERE enrollment_id=${enrollmentId} AND status='active' AND lower(trim(label))=lower(${label}) LIMIT 1
+  `;
+  if (duplicate.length && fromStudentCard) redirect(`/students/${studentId}?queue=plan-duplicate#learning-plan`);
   let sourceRecommendationId: string | null = null;
   if (recommendationId) {
     const recommendation = await sql<Array<{ id: string }>>`
@@ -138,32 +145,42 @@ export async function addLearningPlanItem(formData: FormData) {
     SELECT ${randomUUID()}, ${enrollmentId}, ${label}, 'active', ${sourceRecommendationId}
     WHERE NOT EXISTS (
       SELECT 1 FROM learning_plan_items
-      WHERE enrollment_id=${enrollmentId} AND status='active' AND lower(label)=lower(${label})
+      WHERE enrollment_id=${enrollmentId} AND status='active' AND lower(trim(label))=lower(${label})
     )
   `;
   revalidatePath(`/students/${studentId}`);
+  if (fromStudentCard) redirect(`/students/${studentId}?queue=plan-added#learning-plan`);
 }
 
 export async function addRecyclingItem(formData: FormData) {
   const studentId = String(formData.get('studentId') || '').trim();
   const enrollmentId = String(formData.get('enrollmentId') || '').trim();
-  const label = String(formData.get('label') || '').trim();
+  const label = normalizeLearningLabel(String(formData.get('label') || ''));
+  const priorityValue = Number(String(formData.get('priority') || '2'));
+  const priority = validLearningPriority(priorityValue) ? priorityValue : 2;
+  const fromStudentCard = formData.get('source') === 'student-card';
   if (!studentId || !enrollmentId || !label) return;
   const sql = requireDb();
   const valid = await sql<Array<{ id: string }>>`
     SELECT id FROM enrollments WHERE id=${enrollmentId} AND student_id=${studentId} AND active=true LIMIT 1
   `;
   if (!valid.length) return;
+  const duplicate = await sql<Array<{ id: string }>>`
+    SELECT id FROM recycling_items
+    WHERE enrollment_id=${enrollmentId} AND status='active' AND lower(trim(label))=lower(${label}) LIMIT 1
+  `;
+  if (duplicate.length && fromStudentCard) redirect(`/students/${studentId}?queue=recycling-duplicate#recycling`);
   await sql`
     INSERT INTO recycling_items (id, enrollment_id, label, category, priority, status)
-    SELECT ${randomUUID()}, ${enrollmentId}, ${label}, 'recommendation', 2, 'active'
+    SELECT ${randomUUID()}, ${enrollmentId}, ${label}, ${fromStudentCard ? 'manual' : 'recommendation'}, ${priority}, 'active'
     WHERE NOT EXISTS (
       SELECT 1 FROM recycling_items
-      WHERE enrollment_id=${enrollmentId} AND status='active' AND lower(label)=lower(${label})
+      WHERE enrollment_id=${enrollmentId} AND status='active' AND lower(trim(label))=lower(${label})
     )
   `;
   revalidatePath(`/students/${studentId}`);
   revalidatePath('/');
+  if (fromStudentCard) redirect(`/students/${studentId}?queue=recycling-added#recycling`);
 }
 
 export async function completeLearningPlanItem(formData: FormData) {
@@ -319,6 +336,29 @@ export async function configureStudentCourse(formData: FormData) {
   revalidatePath('/students');
   revalidatePath('/');
   revalidatePath('/urgent');
+}
+
+export async function deactivateLearningPlanItem(formData: FormData) {
+  const studentId = String(formData.get('studentId') || '').trim();
+  const itemId = String(formData.get('itemId') || '').trim();
+  if (!studentId || !itemId) return;
+  await requireDb()`
+    UPDATE learning_plan_items p SET status='done',completed_at=NULL
+    FROM enrollments e WHERE p.id=${itemId} AND p.status='active' AND p.enrollment_id=e.id AND e.student_id=${studentId}
+  `;
+  revalidatePath(`/students/${studentId}`);
+}
+
+export async function deactivateRecyclingItem(formData: FormData) {
+  const studentId = String(formData.get('studentId') || '').trim();
+  const itemId = String(formData.get('itemId') || '').trim();
+  if (!studentId || !itemId) return;
+  await requireDb()`
+    UPDATE recycling_items r SET status='done',completed_at=NULL
+    FROM enrollments e WHERE r.id=${itemId} AND r.status='active' AND r.enrollment_id=e.id AND e.student_id=${studentId}
+  `;
+  revalidatePath(`/students/${studentId}`);
+  revalidatePath('/');
 }
 
 function scheduleValues(formData: FormData) {

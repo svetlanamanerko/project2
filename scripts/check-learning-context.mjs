@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { DIAGNOSTIC_OGE_SECTIONS, excludeUsedQids, isDiagnosticIntent, materialMatchScore, prioritizeMaterialBranches, rankByIntent, resolveCurrentAndNext } from '../src/lib/learning-context-utils.ts';
+import { deactivateQueueItem, hasActiveQueueDuplicate, normalizeLearningLabel, validLearningPriority } from '../src/lib/learning-queue-utils.ts';
+import fs from 'node:fs';
 const tasks=[{qid:'same'},{qid:'new'}];
 assert.deepEqual(excludeUsedQids(tasks,['same']),[{qid:'new'}]);
 assert.deepEqual(excludeUsedQids(tasks,[]),tasks);
@@ -22,4 +24,20 @@ assert.ok(materialMatchScore('OGE START — Student Name — Lesson 01 — Works
 const prioritized=prioritizeMaterialBranches([{path:'Block 5 grammar'},{path:'OGE START / Student Name / Lesson 01'},{path:'Fallback materials'}],{studentName:'Student Name',courseTitle:'ОГЭ 2027',stage:'Старт ОГЭ',lesson:'Урок 1'});
 assert.equal(prioritized[0].path,'OGE START / Student Name / Lesson 01');
 assert.equal(prioritized.length,3);
+let planItems=[{id:'goal-one',enrollmentId:'course-one',label:'Past Simple questions',active:true}];
+assert.equal(normalizeLearningLabel('  New   manual goal  '),'New manual goal');
+assert.equal(hasActiveQueueDuplicate(planItems,'course-one',' past simple QUESTIONS '),true);
+assert.equal(hasActiveQueueDuplicate(planItems,'course-two','Past Simple questions'),false);
+planItems.push({id:'goal-two',enrollmentId:'course-one',label:'Build a monologue',active:true});
+planItems=deactivateQueueItem(planItems,'goal-one');
+assert.equal(planItems.find((item)=>item.id==='goal-one')?.active,false);
+assert.equal(planItems.find((item)=>item.id==='goal-two')?.active,true);
+let recycling=[{id:'repeat-one',enrollmentId:'course-one',label:'do/does questions',active:true},{id:'repeat-two',enrollmentId:'course-one',label:'Travelling vocabulary',active:true}];
+assert.equal(hasActiveQueueDuplicate(recycling,'course-one',' DO/DOES QUESTIONS '),true);
+recycling=deactivateQueueItem(recycling,'repeat-one');
+assert.equal(recycling.find((item)=>item.id==='repeat-two')?.active,true);
+assert.equal(validLearningPriority(1)&&validLearningPriority(3)&&!validLearningPriority(4),true);
+const studentPage=fs.readFileSync(new URL('../src/app/(private)/students/[studentId]/page.tsx',import.meta.url),'utf8');
+assert.match(studentPage,/Добавить цель/);
+assert.match(studentPage,/Добавить на повторение/);
 console.log('Learning context checks passed.');

@@ -9,6 +9,8 @@ import {
   addStudentObservation,
   completeLearningPlanItem,
   completeRecyclingItem,
+  deactivateLearningPlanItem,
+  deactivateRecyclingItem,
   generateStudentAdviceAction,
   deactivateScheduleRule,
   updateScheduleRule,
@@ -184,14 +186,31 @@ export default async function StudentPage({ params, searchParams }: PageProps<'/
         </div>}
       </section>
 
-      <section className={`panel ${styles.queuePanel}`}>
+      <section className={`panel ${styles.queuePanel}`} id="learning-plan">
         <div className="panel-title"><h2><Target size={18}/>План обучения</h2><span className="count-badge">{student.learningPlan.length}</span></div>
-        {student.learningPlan.length ? <div className={styles.queueList}>{student.learningPlan.map((item) => <article key={item.id}><div><strong>{item.label}</strong><span>{item.course}</span></div><form action={completeLearningPlanItem}><input type="hidden" name="studentId" value={studentId}/><input type="hidden" name="itemId" value={item.id}/><button title="Готово" type="submit"><CheckCircle2 size={17}/></button></form></article>)}</div> : <p className="muted small">Пока пусто. Сюда можно добавлять конкретные методические цели из рекомендаций.</p>}
+        {query.queue === 'plan-added' && <div className="notice success">Цель добавлена в план.</div>}
+        {query.queue === 'plan-duplicate' && <div className="notice warning">Такая активная цель уже есть для выбранного курса.</div>}
+        {student.learningPlan.length ? <div className={styles.queueList}>{student.learningPlan.map((item) => <article key={item.id}><div><strong>{item.label}</strong><span>{item.course}</span></div><div className={styles.queueActions}><form action={completeLearningPlanItem}><input type="hidden" name="studentId" value={studentId}/><input type="hidden" name="itemId" value={item.id}/><button title="Готово" type="submit"><CheckCircle2 size={17}/></button></form><form action={deactivateLearningPlanItem}><input type="hidden" name="studentId" value={studentId}/><input type="hidden" name="itemId" value={item.id}/><button className={styles.removeQueueItem} title="Убрать ошибочно созданную цель" type="submit"><Trash2 size={16}/></button></form></div></article>)}</div> : <p className="muted small">Пока целей нет.</p>}
+        {student.courses.length > 0 && <details className={styles.queueAdd}><summary><Plus size={15}/>Добавить цель</summary><form action={addLearningPlanItem} className={styles.queueAddForm}>
+          <input type="hidden" name="studentId" value={studentId}/><input type="hidden" name="source" value="student-card"/>
+          <label>Курс<select name="enrollmentId" required defaultValue={defaultEnrollmentId}>{student.courses.map((course) => <option key={course.enrollmentId} value={course.enrollmentId}>{course.title}</option>)}</select></label>
+          <label>Цель<textarea name="label" rows={2} required placeholder="Например: отработать Past Simple questions"/></label>
+          <SaveStatusButton className="button primary" idleLabel="Добавить в план" pendingLabel="Добавляю…"/>
+        </form></details>}
       </section>
 
-      <section className={`panel ${styles.queuePanel}`}>
+      <section className={`panel ${styles.queuePanel}`} id="recycling">
         <div className="panel-title"><h2><RefreshCw size={18}/>Повторение</h2><span className="count-badge">{student.recycling.length}</span></div>
-        {student.recycling.length ? <div className={styles.queueList}>{student.recycling.map((item) => <article key={item.id}><div><strong>{item.label}</strong><span>{item.course}</span></div><form action={completeRecyclingItem}><input type="hidden" name="studentId" value={studentId}/><input type="hidden" name="itemId" value={item.id}/><button title="Больше не нужно повторять" type="submit"><CheckCircle2 size={17}/></button></form></article>)}</div> : <p className="muted small">Активных пунктов повторения нет.</p>}
+        {query.queue === 'recycling-added' && <div className="notice success">Пункт добавлен в повторение.</div>}
+        {query.queue === 'recycling-duplicate' && <div className="notice warning">Такой активный пункт уже есть для выбранного курса.</div>}
+        {student.recycling.length ? <div className={styles.queueList}>{student.recycling.map((item) => <article key={item.id}><div><strong>{item.label}</strong><span>{item.course} · приоритет {item.priority}</span></div><div className={styles.queueActions}><form action={completeRecyclingItem}><input type="hidden" name="studentId" value={studentId}/><input type="hidden" name="itemId" value={item.id}/><button title="Больше не нужно повторять" type="submit"><CheckCircle2 size={17}/></button></form><form action={deactivateRecyclingItem}><input type="hidden" name="studentId" value={studentId}/><input type="hidden" name="itemId" value={item.id}/><button className={styles.removeQueueItem} title="Убрать ошибочно созданный пункт" type="submit"><Trash2 size={16}/></button></form></div></article>)}</div> : <p className="muted small">Активных пунктов повторения нет.</p>}
+        {student.courses.length > 0 && <details className={styles.queueAdd}><summary><Plus size={15}/>Добавить на повторение</summary><form action={addRecyclingItem} className={styles.queueAddForm}>
+          <input type="hidden" name="studentId" value={studentId}/><input type="hidden" name="source" value="student-card"/>
+          <label>Курс<select name="enrollmentId" required defaultValue={defaultEnrollmentId}>{student.courses.map((course) => <option key={course.enrollmentId} value={course.enrollmentId}>{course.title}</option>)}</select></label>
+          <label>Что повторить<textarea name="label" rows={2} required placeholder="Например: Present Perfect vs Past Simple"/></label>
+          <label>Приоритет<select name="priority" defaultValue="2"><option value="1">1 — высокий</option><option value="2">2 — обычный</option><option value="3">3 — низкий</option></select></label>
+          <SaveStatusButton className="button primary" idleLabel="Добавить" pendingLabel="Добавляю…"/>
+        </form></details>}
       </section>
 
       <section className={`panel ${styles.wide} ${styles.advicePanel}`} id="recommendations">

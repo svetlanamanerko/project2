@@ -43,6 +43,7 @@
 .queueList strong,.queueList span{display:block;}.queueList strong{font-size:13px;}.queueList span{margin-top:3px;color:var(--muted);font-size:10px;}
 .queueList button{display:grid;place-items:center;width:32px;height:32px;padding:0;}
 .queueList button:hover{background:#e7f7ef;color:#2f8e63;}
+.queueActions{display:flex;align-items:center;gap:5px}.queueList .removeQueueItem{background:#fff5f6;color:#ad5663}.queueList .removeQueueItem:hover{background:#ffe8eb;color:#963d4b}.queueAdd{margin-top:12px}.queueAdd summary{display:inline-flex;align-items:center;gap:5px;padding:8px 10px;border-radius:10px;background:#f0effc;color:#655bd1;font-size:11px;font-weight:800;cursor:pointer}.queueAddForm{display:grid;gap:10px;margin-top:10px;padding:12px;border:1px solid #e5e4f0;border-radius:13px;background:#fff}.queueAddForm label{display:grid;gap:5px;color:#656b80;font-size:11px;font-weight:800}.queueAddForm input,.queueAddForm textarea,.queueAddForm select{width:100%;padding:10px 11px;border:1px solid #dddcec;border-radius:11px;background:#fff;color:var(--text);font:inherit}.queueAddForm textarea{resize:vertical}.queueAddForm button{justify-self:start;width:auto;height:auto;padding:10px 13px}
 .advicePanel{background:linear-gradient(145deg,rgba(255,255,255,.99),rgba(249,246,255,.96));}
 .adviceAction{margin:4px 0 16px;}
 .adviceResult{display:grid;gap:16px;}
