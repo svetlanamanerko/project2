@@ -6,6 +6,7 @@ import { prepareLessonSource } from '@/lib/lesson-source';
 import { buildLessonDocx } from '@/lib/lesson-docx';
 import { generatedDocxMimeType, uploadLessonPackageFiles } from '@/lib/generated-materials-drive';
 import { buildLessonContext } from '@/lib/lesson-context';
+import { generateKieText, KieRequestError } from '@/lib/ai-routing';
 
 type PackageDraft = {
   title: string;
@@ -213,7 +214,30 @@ export async function POST(request: Request) {
     `Отобранный lesson context (Course Map → Progress → Drive/Navigator): ${JSON.stringify(lessonContext)}`,
   ].join('\n');
 
+  let communicativeWarmup = '';
+  let fastGenerationWarning: string | null = null;
+  try {
+    const warmup = await generateKieText({
+      route: 'fast',
+      key,
+      timeoutMs: 20_000,
+      input: [{
+        type: 'input_text',
+        text: `Create one short Communicative Core warm-up for an individual English lesson.\n${contextText}\n\nReturn plain text only: 3-5 oral questions, useful sentence starters and a compact phrase bank. Adapt it to the learner and current topic. Do not analyse or redesign the long-term route.`,
+      }],
+    });
+    communicativeWarmup = warmup.text;
+  } catch (error) {
+    fastGenerationWarning = 'Быстрая генерация Communicative Core временно недоступна; урок собран без автоматически созданной разминки.';
+    console.error('[lesson-package] fast Communicative Core unavailable:', error);
+  }
+
   const prompt = `Ты методист и автор материалов личной «Мастерской уроков» преподавателя английского. К сообщению приложен реальный фрагмент учебника. Собери ПОЛНЫЙ текстовый пакет к индивидуальному уроку на 60 минут, который можно сразу использовать онлайн и распечатать.
+
+COMMUNICATIVE CORE (создан отдельным fast-generation route):
+${communicativeWarmup || 'Fast-generation warm-up недоступен. Не заменяй его глубокой аналитической разминкой.'}
+
+Если Communicative Core указан выше, включи его в начало CORE без повторной генерации и без методического переосмысления.
 
 КОНТЕКСТ:
 ${contextText}
@@ -247,31 +271,15 @@ ${contextText}
 }`;
 
   try {
-    const response = await fetch('https://api.kie.ai/codex/v1/responses', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'gpt-5-4',
-        stream: false,
-        input: [{
-          role: 'user',
-          content: [
-            { type: 'input_text', text: prompt },
-            { type: 'input_file', file_url: source.kieFileUrl },
-          ],
-        }],
-        reasoning: { effort: 'low' },
-      }),
-      cache: 'no-store',
+    const result = await generateKieText({
+      route: 'standard',
+      key,
+      input: [
+        { type: 'input_text', text: prompt },
+        { type: 'input_file', file_url: source.kieFileUrl },
+      ],
     });
-    const payload = await response.json().catch(() => null);
-    if (!response.ok) {
-      const msg = payload && typeof payload === 'object' && 'msg' in payload
-        ? String((payload as { msg?: unknown }).msg || '') : '';
-      return NextResponse.json({ ok: false, message: msg || `KIE ответил HTTP ${response.status}.` }, { status: 502 });
-    }
-
-    const draft = findPackage(payload);
+    const draft = findPackage({ output_text: result.text });
     if (!draft) {
       console.error('[lesson-package] KIE вернул невалидную структуру');
       return NextResponse.json({ ok: false, message: 'AI собрал урок, но вернул его в неверном формате. Нажмите «Собрать урок» ещё раз.' }, { status: 502 });
@@ -315,7 +323,7 @@ ${contextText}
     const teacherFilename = `${baseName} — Teacher Pack.docx`;
 
     let drive: Awaited<ReturnType<typeof uploadLessonPackageFiles>> | null = null;
-    let warning: string | null = null;
+    let warning: string | null = fastGenerationWarning;
     try {
       drive = await uploadLessonPackageFiles({
         courseFolderId: context.courseFolderId,
@@ -329,12 +337,11 @@ ${contextText}
       });
     } catch (error) {
       console.error('[lesson-package] Урок собран, но Drive upload не удался:', error);
-      warning = 'Урок собран и сохранён в Мастерской, но Word-файлы пока не удалось записать на Google Drive.';
+      const driveWarning = 'Урок собран и сохранён в Мастерской, но Word-файлы пока не удалось записать на Google Drive.';
+      warning = warning ? `${warning} ${driveWarning}` : driveWarning;
     }
 
-    const creditsRaw = payload && typeof payload === 'object' && 'credits_consumed' in payload
-      ? Number((payload as { credits_consumed?: unknown }).credits_consumed) : null;
-    const credits = Number.isFinite(creditsRaw) ? creditsRaw : null;
+    const credits = result.credits;
 
     await sql.begin(async (tx) => {
       await tx`
@@ -401,6 +408,9 @@ ${contextText}
     });
   } catch (error) {
     console.error('[lesson-package] Не удалось собрать урок:', error);
-    return NextResponse.json({ ok: false, message: 'Не удалось собрать полный урок.' }, { status: 502 });
+    return NextResponse.json({
+      ok: false,
+      message: error instanceof KieRequestError ? error.message : 'Не удалось собрать полный урок.',
+    }, { status: 502 });
   }
 }

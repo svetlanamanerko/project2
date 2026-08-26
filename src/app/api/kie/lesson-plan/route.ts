@@ -4,6 +4,7 @@ import { hasSession } from '@/lib/auth';
 import { db, dbConfigured } from '@/lib/db';
 import { prepareLessonSource, type PreparedLessonSource } from '@/lib/lesson-source';
 import { buildLessonContext } from '@/lib/lesson-context';
+import { generateKieText, KieRequestError, type KieInputPart } from '@/lib/ai-routing';
 
 function extractText(payload: unknown) {
   if (!payload || typeof payload !== 'object') return '';
@@ -145,31 +146,15 @@ export async function POST(request: Request) {
   const prompt = `Ты методист личной Мастерской уроков преподавателя английского. Составь КОРОТКИЙ ПЛАН ПОДГОТОВКИ к индивидуальному уроку на 60 минут. Это ещё не worksheet.\n\nДАННЫЕ ИЗ БАЗЫ:\n${sourceContext}\n\nРАБОТА С ИСТОЧНИКОМ:\n${sourceRule}\n\nЖЁСТКИЕ ПРАВИЛА:\n- опирайся на данные базы, историю ученика, наблюдения преподавателя и приложенный источник, если он есть;\n- НЕ выдумывай упражнения, тексты, слова, правила или задания, которых нет в источнике/данных;\n- активные пункты плана обучения должны влиять на приоритеты урока, если они релевантны текущей школьной теме;\n- учитывай школьный темп: не предлагай надолго задерживаться на одном материале;\n- обязательно предусмотрите вывод материала в речь;\n- язык ответа — русский, компактно, без длинных объяснений.\n\nФОРМАТ:\nИсточник: ${preparedSource ? preparedSource.label : 'не найден'}\nФокус урока: ...\nЦель: ...\nCORE 60 минут:\n1. ...\n2. ...\n3. ...\n4. ...\nSpeaking transfer: ...\nЧто повторить: ...\nRESERVE: ...\nНужен дополнительный источник: ...`;
 
   try {
-    const inputContent: Array<Record<string, string>> = [
+    const inputContent: KieInputPart[] = [
       { type: 'input_text', text: prompt },
     ];
     if (preparedSource) {
       inputContent.push({ type: 'input_file', file_url: preparedSource.kieFileUrl });
     }
 
-    const response = await fetch('https://api.kie.ai/codex/v1/responses', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'gpt-5-4',
-        stream: false,
-        input: [{ role: 'user', content: inputContent }],
-        reasoning: { effort: 'low' },
-      }),
-      cache: 'no-store',
-    });
-    const payload = await response.json().catch(() => null);
-    if (!response.ok) {
-      const msg = payload && typeof payload === 'object' && 'msg' in payload
-        ? String((payload as { msg?: unknown }).msg || '') : '';
-      return NextResponse.json({ ok: false, message: msg || `KIE ответил HTTP ${response.status}.` }, { status: 502 });
-    }
-    const plan = extractText(payload);
+    const result = await generateKieText({ route: 'standard', key, input: inputContent });
+    const plan = result.text;
     if (!plan) {
       return NextResponse.json({ ok: false, message: 'KIE ответил без текста.' }, { status: 502 });
     }
@@ -193,16 +178,17 @@ export async function POST(request: Request) {
       `;
     }
 
-    const credits = payload && typeof payload === 'object' && 'credits_consumed' in payload
-      ? Number((payload as { credits_consumed?: unknown }).credits_consumed) : null;
     return NextResponse.json({
       ok: true,
       plan,
       source: preparedSource?.label || null,
-      credits: Number.isFinite(credits) ? credits : null,
+      credits: result.credits,
     });
   } catch (error) {
     console.error('[kie] Не удалось составить AI-план урока:', error);
-    return NextResponse.json({ ok: false, message: 'Не удалось связаться с KIE.' }, { status: 502 });
+    return NextResponse.json({
+      ok: false,
+      message: error instanceof KieRequestError ? error.message : 'Не удалось связаться с KIE.',
+    }, { status: 502 });
   }
 }

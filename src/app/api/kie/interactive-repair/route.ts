@@ -4,6 +4,7 @@ import { db, dbConfigured } from '@/lib/db';
 import { normalizeLessonJson, unwrapLessonJson } from '@/lib/lesson-json-normalize';
 import { validateLessonJson, type LessonJsonV1 } from '@/lib/lesson-json';
 import { buildInteractiveRepairPrompt } from '@/lib/lesson-json-prompt';
+import { generateKieText, KieRequestError } from '@/lib/ai-routing';
 
 function extractTextCandidates(payload: unknown) {
   const result: string[] = [];
@@ -137,24 +138,12 @@ export async function POST(request: Request) {
   });
 
   try {
-    const response = await fetch('https://api.kie.ai/codex/v1/responses', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'gpt-5-4',
-        stream: false,
-        input: [{ role: 'user', content: [{ type: 'input_text', text: prompt }] }],
-        reasoning: { effort: 'low' },
-      }),
-      cache: 'no-store',
+    const result = await generateKieText({
+      route: 'fast',
+      key,
+      input: [{ type: 'input_text', text: prompt }],
     });
-    const payload = await response.json().catch(() => null);
-    if (!response.ok) {
-      const msg = payload && typeof payload === 'object' && 'msg' in payload ? String((payload as { msg?: unknown }).msg || '') : '';
-      return NextResponse.json({ ok: false, message: msg || `KIE ответил HTTP ${response.status}.` }, { status: 502 });
-    }
-
-    const found = findValidLessonJson(payload, lesson.title);
+    const found = findValidLessonJson({ output_text: result.text }, lesson.title);
     if (!found.lesson) {
       console.error('[interactive-repair] validator issues:', found.issues);
       return NextResponse.json({
@@ -170,12 +159,12 @@ export async function POST(request: Request) {
       WHERE lesson_id=${lessonId}
     `;
 
-    const creditsRaw = payload && typeof payload === 'object' && 'credits_consumed' in payload
-      ? Number((payload as { credits_consumed?: unknown }).credits_consumed) : null;
-    const credits = Number.isFinite(creditsRaw) ? creditsRaw : null;
-    return NextResponse.json({ ok: true, ready: true, alreadyReady: false, credits });
+    return NextResponse.json({ ok: true, ready: true, alreadyReady: false, credits: result.credits });
   } catch (error) {
     console.error('[interactive-repair] failed:', error);
-    return NextResponse.json({ ok: false, message: 'Не удалось подготовить интерактивную версию.' }, { status: 502 });
+    return NextResponse.json({
+      ok: false,
+      message: error instanceof KieRequestError ? error.message : 'Не удалось подготовить интерактивную версию.',
+    }, { status: 502 });
   }
 }

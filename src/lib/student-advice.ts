@@ -2,6 +2,7 @@ import 'server-only';
 
 import { db, dbConfigured } from '@/lib/db';
 import { getDriveCourseMaterials } from '@/lib/drive-materials';
+import { generateKieText } from '@/lib/ai-routing';
 
 export type StudentAdvice = {
   summary: string;
@@ -186,27 +187,13 @@ export async function generateStudentLearningAdvice(studentId: string): Promise<
 
   const prompt = `Ты методист личной «Мастерской уроков» преподавателя английского языка. Проанализируй конкретного ученика и предложи практический маршрут обучения.\n\nУЧЕНИК:\n${student.displayName}${student.schoolGrade ? `, ${student.schoolGrade} класс` : ''}\n\nПОСТОЯННЫЙ КОНТЕКСТ / ИСТОРИЯ:\n${student.notes || 'Пока не заполнено.'}\n\nАКТИВНЫЕ КУРСЫ И ТЕКУЩАЯ ПОЗИЦИЯ:\n${courseContext}\n\nНАБЛЮДЕНИЯ ПРЕПОДАВАТЕЛЯ ПО ХОДУ ОБУЧЕНИЯ:\n${observationContext}\n\nПОСЛЕДНИЕ УРОКИ:\n${lessonContext}\n\nУЖЕ СТОИТ В ПОВТОРЕНИИ:\n${recyclingContext}\n\nПРОФИЛЬ НАВЫКОВ:\n${skillsContext}\n\nУЖЕ В ПЛАНЕ ОБУЧЕНИЯ:\n${planContext}\n\nИСТОЧНИКИ КУРСОВ В GOOGLE DRIVE:\n${driveContext}\n\nВАЖНО ПРО ИСТОЧНИКИ:\nЗдесь перечислены только имена папок/файлов верхнего уровня. Не придумывай их содержание. Используй названия только как ориентир, что у преподавателя есть такой источник.\n\nПРАВИЛА:\n- опирайся на реальные наблюдения и историю ученика;\n- не ставь диагнозы и не делай выводы о способностях ученика без данных;\n- отличай текущую школьную помощь от долгосрочной цели курса;\n- рекомендации должны помогать выбрать следующие 2–4 урока, а не быть общей теорией;\n- учитывай уже активные пункты плана и повторения, не дублируй их без причины;\n- для экзаменационного курса учитывай необходимость баланса формата экзамена и реального языка;\n- язык ответа — русский;\n- верни ТОЛЬКО JSON без markdown.\n\nФОРМАТ JSON:\n{\n  "summary": "2-4 предложения: где ученик сейчас и общая стратегия",\n  "priorities": ["3-5 конкретных приоритетов на ближайшие уроки"],\n  "nextLesson": ["что разумно включить в ближайший урок"],\n  "watch": ["на что преподавателю наблюдать и что проверять"],\n  "planItems": ["короткие пункты, которые можно добавить в план обучения"],\n  "recycleItems": ["короткие языковые пункты, которые стоит поставить в повторение"]\n}`;
 
-  const response = await fetch('https://api.kie.ai/codex/v1/responses', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'gpt-5-4',
-      stream: false,
-      input: [{ role: 'user', content: [{ type: 'input_text', text: prompt }] }],
-      reasoning: { effort: 'low' },
-    }),
-    cache: 'no-store',
+  const result = await generateKieText({
+    route: 'analysis',
+    key,
+    input: [{ type: 'input_text', text: prompt }],
   });
-  const payload = await response.json().catch(() => null);
-  if (!response.ok) {
-    const msg = payload && typeof payload === 'object' && 'msg' in payload
-      ? String((payload as { msg?: unknown }).msg || '') : '';
-    throw new Error(msg || `KIE ответил HTTP ${response.status}`);
-  }
-  const text = extractText(payload);
+  const text = result.text;
   const advice = parseAdvice(text);
   if (!advice) throw new Error('KIE не вернул корректные рекомендации');
-  const credits = payload && typeof payload === 'object' && 'credits_consumed' in payload
-    ? Number((payload as { credits_consumed?: unknown }).credits_consumed) : null;
-  return { advice, credits: Number.isFinite(credits) ? credits : null };
+  return { advice, credits: result.credits };
 }
