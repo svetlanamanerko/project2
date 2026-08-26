@@ -26,7 +26,10 @@ export default async function StudentsPage({ searchParams }: PageProps<'/student
 
     <div className="two-col">
       <section className="panel"><div className="panel-title"><h2>Активные ученики</h2><span className="count-badge">{students.length}</span></div>
-        {students.length ? <div className="card-list">{students.map((s) => <Link className={styles.studentLink} href={`/students/${s.id}`} key={s.id}><article className="person-card"><div className="avatar soft"><UserRound size={20}/></div><div><strong>{s.displayName}</strong><span>{s.schoolGrade ? `${s.schoolGrade} класс` : 'класс не указан'}</span></div></article></Link>)}</div> : <EmptyState title="Пока никого нет" text="Добавьте первого ученика — полный список заранее знать не нужно."/>}
+        {students.length ? <div className="card-list">{students.map((s) => <article className={styles.studentCard} key={s.id}>
+          <Link className={styles.studentPrimary} href={`/students/${s.id}`} aria-label={`Открыть карточку ученика ${s.displayName}`}><div className="avatar soft"><UserRound size={20}/></div><div><strong>{s.displayName}</strong><span>{s.schoolGrade ? `${s.schoolGrade} класс` : 'класс не указан'}</span></div></Link>
+          <Link className={styles.studentAction} href={`/students/${s.id}`}>Открыть карточку <span aria-hidden="true">→</span></Link>
+        </article>)}</div> : <EmptyState title="Пока никого нет" text="Добавьте первого ученика — полный список заранее знать не нужно."/>}
       </section>
 
       <section className="panel form-panel"><div className="panel-title"><h2><Plus size={18}/>Добавить ученика</h2></div>
