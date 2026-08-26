@@ -141,6 +141,7 @@ export async function POST(request: Request) {
     const result = await generateKieText({
       route: 'fast',
       key,
+      purpose: 'interactive-repair',
       input: [{ type: 'input_text', text: prompt }],
     });
     const found = findValidLessonJson({ output_text: result.text }, lesson.title);

@@ -220,6 +220,9 @@ export async function POST(request: Request) {
     const warmup = await generateKieText({
       route: 'fast',
       key,
+      purpose: 'communicative-warm-up',
+      studentId: context.studentId,
+      enrollmentId,
       timeoutMs: 20_000,
       input: [{
         type: 'input_text',
@@ -274,6 +277,9 @@ ${contextText}
     const result = await generateKieText({
       route: 'standard',
       key,
+      purpose: 'lesson-package',
+      studentId: context.studentId,
+      enrollmentId,
       input: [
         { type: 'input_text', text: prompt },
         { type: 'input_file', file_url: source.kieFileUrl },

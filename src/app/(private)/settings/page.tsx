@@ -4,9 +4,26 @@ import { dbConfigured } from '@/lib/db';
 import { getGoogleDriveStatus } from '@/lib/google-drive';
 import { KieCheckButton } from './KieCheckButton';
 import { searchOgeTasks } from '@/lib/oge-navigator-client';
+import { getAiUsageSummary, getKieBalanceStatus } from '@/lib/ai-usage';
+import styles from './settings.module.css';
+
+const purposeLabels: Record<string, string> = {
+  'connection-check': 'Проверка соединения',
+  'communicative-warm-up': 'Communicative warm-up',
+  'interactive-repair': 'Интерактивная версия',
+  'lesson-plan': 'План урока',
+  'lesson-package': 'Пакет урока',
+  'student-advice': 'Анализ маршрута ученика',
+};
+
+function credits(value: number) {
+  return new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 8 }).format(value);
+}
 
 export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ drive?: string }> }) {
-  const [drive, params, navigator] = await Promise.all([getGoogleDriveStatus(), searchParams, searchOgeTasks({ pageSize: 1 })]);
+  const [drive, params, navigator, balance, usage] = await Promise.all([
+    getGoogleDriveStatus(), searchParams, searchOgeTasks({ pageSize: 1 }), getKieBalanceStatus(), getAiUsageSummary(),
+  ]);
   const kieConfigured = Boolean(process.env.KIE_API_KEY?.trim());
 
   const driveNotice = params.drive === 'connected'
@@ -31,7 +48,14 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
     <section className="panel"><div className="settings-list">
       <div className="setting-row"><div className="course-icon"><KeyRound size={20}/></div><div><strong>Авторизация</strong><span>ADMIN_PASSWORD + SESSION_SECRET</span></div><span className={authConfigured()?'status status-prepared':'status status-draft'}>{authConfigured()?'Готово':'Нужно настроить'}</span></div>
       <div className="setting-row"><div className="course-icon"><Database size={20}/></div><div><strong>PostgreSQL</strong><span>База учеников, курсов и уроков</span></div><span className={dbConfigured()?'status status-prepared':'status status-draft'}>{dbConfigured()?'Готово':'Нужно настроить'}</span></div>
-      <div className="setting-row"><div className="course-icon"><Bot size={20}/></div><div><strong>KIE AI</strong><span>{kieConfigured ? 'KIE_API_KEY найден · можно проверить соединение' : 'Добавьте KIE_API_KEY в секреты Amvera'}</span></div>{kieConfigured ? <KieCheckButton/> : <span className="status status-draft">Нужно настроить</span>}</div>
+      <div className={styles.aiSetting}>
+        <div className={styles.aiHeader}><div className="course-icon"><Bot size={20}/></div><div><strong>KIE AI</strong><span>{kieConfigured ? 'Расход учитывается по фактическим credits_consumed KIE' : 'Добавьте KIE_API_KEY в секреты Amvera'}</span></div>{kieConfigured ? <KieCheckButton/> : <span className="status status-draft">Нужно настроить</span>}</div>
+        {kieConfigured && <div className={styles.aiUsage}>
+          <div className={styles.balance}><span>Баланс KIE</span><strong>{balance.available && balance.balance !== null ? `${credits(balance.balance)} credits` : 'Временно недоступен'}</strong></div>
+          <div className={styles.totals}><div><span>Сегодня</span><strong>{usage.available ? `${credits(usage.today)} credits` : '—'}</strong></div><div><span>Этот месяц</span><strong>{usage.available ? `${credits(usage.month)} credits` : '—'}</strong></div></div>
+          <div className={styles.lastCall}><span>Последний AI-вызов</span>{usage.last ? <><strong>{usage.last.route.toUpperCase()} · {usage.last.model}</strong><p>{purposeLabels[usage.last.purpose] || usage.last.purpose}</p><small>{usage.last.status === 'error' ? usage.last.creditsConsumed === null ? 'Ошибка · credits не получены' : `Ошибка · ${credits(usage.last.creditsConsumed)} credits` : usage.last.creditsConsumed === null ? 'KIE не вернул credits_consumed' : `${credits(usage.last.creditsConsumed)} credits`} · {usage.last.createdAt}</small></> : <p>Статистика начнёт собираться с этого момента.</p>}</div>
+        </div>}
+      </div>
       <div className="setting-row">
         <div className="course-icon"><HardDrive size={20}/></div>
         <div>

@@ -190,6 +190,8 @@ export async function generateStudentLearningAdvice(studentId: string): Promise<
   const result = await generateKieText({
     route: 'analysis',
     key,
+    purpose: 'student-advice',
+    studentId,
     input: [{ type: 'input_text', text: prompt }],
   });
   const text = result.text;

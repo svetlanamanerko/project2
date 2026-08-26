@@ -153,7 +153,10 @@ export async function POST(request: Request) {
       inputContent.push({ type: 'input_file', file_url: preparedSource.kieFileUrl });
     }
 
-    const result = await generateKieText({ route: 'standard', key, input: inputContent });
+    const result = await generateKieText({
+      route: 'standard', key, input: inputContent, purpose: 'lesson-plan',
+      studentId: context.studentId, enrollmentId,
+    });
     const plan = result.text;
     if (!plan) {
       return NextResponse.json({ ok: false, message: 'KIE ответил без текста.' }, { status: 502 });

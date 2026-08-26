@@ -33,6 +33,7 @@ export async function POST() {
     const result = await generateKieText({
       route: 'fast',
       key,
+      purpose: 'connection-check',
       input: [{ type: 'input_text', text: 'Reply exactly with: KIE OK' }],
     });
 
