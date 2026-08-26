@@ -19,6 +19,7 @@ export type StoredLessonPackage = {
 export type TodayLesson = {
   scheduleId: string;
   time: string;
+  durationMinutes: number;
   student: string;
   course: string;
   enrollmentId: string;
@@ -44,10 +45,10 @@ export function isoWeekday(date: string) {
 
 function demoLessons(): TodayLesson[] {
   return [
-    { scheduleId: 'd1', time: '14:00', student: 'Ученик 1', course: 'Spotlight 4', enrollmentId: 'e1', lessonId: 'l1', status: 'prepared', note: 'повторить чтение и грамматику', summary: null, package: null },
-    { scheduleId: 'd2', time: '16:00', student: 'Ученик 2', course: 'Spotlight 5', enrollmentId: 'e2', lessonId: null, status: 'missing', note: 'школа ушла вперёд', summary: null, package: null },
-    { scheduleId: 'd3', time: '18:00', student: 'Ученик 3', course: 'Spotlight 7', enrollmentId: 'e3', lessonId: null, status: 'missing', note: 'добавить говорение', summary: null, package: null },
-    { scheduleId: 'd4', time: '20:00', student: 'Ученик 4', course: 'Starlight 9', enrollmentId: 'e4', lessonId: null, status: 'missing', note: 'пришла срочная школьная тема', summary: null, package: null },
+    { scheduleId: 'd1', time: '14:00', durationMinutes: 60, student: 'Ученик 1', course: 'Spotlight 4', enrollmentId: 'e1', lessonId: 'l1', status: 'prepared', note: 'повторить чтение и грамматику', summary: null, package: null },
+    { scheduleId: 'd2', time: '16:00', durationMinutes: 60, student: 'Ученик 2', course: 'Spotlight 5', enrollmentId: 'e2', lessonId: null, status: 'missing', note: 'школа ушла вперёд', summary: null, package: null },
+    { scheduleId: 'd3', time: '18:00', durationMinutes: 60, student: 'Ученик 3', course: 'Spotlight 7', enrollmentId: 'e3', lessonId: null, status: 'missing', note: 'добавить говорение', summary: null, package: null },
+    { scheduleId: 'd4', time: '20:00', durationMinutes: 60, student: 'Ученик 4', course: 'Starlight 9', enrollmentId: 'e4', lessonId: null, status: 'missing', note: 'пришла срочная школьная тема', summary: null, package: null },
   ];
 }
 
@@ -60,6 +61,7 @@ export async function getLessonsForDate(date: string) {
     SELECT
       sr.id as "scheduleId",
       to_char(sr.start_time, 'HH24:MI') as time,
+      sr.duration_minutes::int as "durationMinutes",
       s.display_name as student,
       c.title as course,
       e.id as "enrollmentId",
@@ -85,7 +87,7 @@ export async function getLessonsForDate(date: string) {
     JOIN students s ON s.id = e.student_id AND s.active = true
     JOIN courses c ON c.id = e.course_id AND c.active = true
     LEFT JOIN school_positions sp ON sp.enrollment_id = e.id
-    LEFT JOIN lessons l ON l.enrollment_id = e.id AND l.scheduled_date = ${date}::date AND l.lesson_type <> 'urgent'
+    LEFT JOIN lessons l ON l.enrollment_id = e.id AND l.scheduled_date = ${date}::date AND l.scheduled_time = sr.start_time AND l.lesson_type <> 'urgent'
     LEFT JOIN lesson_packages lp ON lp.lesson_id = l.id
     WHERE sr.active = true AND sr.iso_weekday = ${weekday}
     ORDER BY sr.start_time ASC
@@ -145,6 +147,7 @@ export type StudentDetails = {
     course: string;
     weekday: number;
     time: string;
+    durationMinutes: number;
   }>;
   recentLessons: Array<{
     id: string;
@@ -206,7 +209,7 @@ export async function getStudentDetails(studentId: string): Promise<StudentDetai
     `,
     sql<StudentDetails['schedule']>`
       SELECT sr.id, e.id as "enrollmentId", c.title as course, sr.iso_weekday::int as weekday,
-             to_char(sr.start_time, 'HH24:MI') as time
+             to_char(sr.start_time, 'HH24:MI') as time, sr.duration_minutes::int as "durationMinutes"
       FROM schedule_rules sr
       JOIN enrollments e ON e.id=sr.enrollment_id AND e.active=true
       JOIN courses c ON c.id=e.course_id AND c.active=true

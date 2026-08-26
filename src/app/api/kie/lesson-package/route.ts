@@ -111,8 +111,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, message: 'KIE_API_KEY не найден.' }, { status: 503 });
   }
 
-  const body = await request.json().catch(() => ({})) as { enrollmentId?: string };
+  const body = await request.json().catch(() => ({})) as { enrollmentId?: string; scheduledTime?: string };
   const enrollmentId = String(body.enrollmentId || '').trim();
+  const scheduledTime = /^\d{2}:\d{2}$/.test(String(body.scheduledTime || '')) ? String(body.scheduledTime) : null;
   if (!enrollmentId) {
     return NextResponse.json({ ok: false, message: 'Не выбран ученик.' }, { status: 400 });
   }
@@ -142,7 +143,9 @@ export async function POST(request: Request) {
     LEFT JOIN school_positions sp ON sp.enrollment_id=e.id
     LEFT JOIN LATERAL (
       SELECT id, summary FROM lessons
-      WHERE enrollment_id=e.id AND scheduled_date=${date}::date AND lesson_type <> 'urgent'
+      WHERE enrollment_id=e.id AND scheduled_date=${date}::date
+        AND (${scheduledTime}::text IS NULL OR scheduled_time=${scheduledTime}::time)
+        AND lesson_type <> 'urgent'
       ORDER BY created_at DESC LIMIT 1
     ) l ON true
     WHERE e.id=${enrollmentId} AND e.active=true
@@ -278,8 +281,8 @@ ${contextText}
     if (!lessonId) {
       lessonId = randomUUID();
       await sql`
-        INSERT INTO lessons (id, enrollment_id, lesson_type, status, title, scheduled_date, source_position, summary)
-        VALUES (${lessonId}, ${enrollmentId}, 'planned', 'draft', ${context.course}, ${date}::date, ${source.label}, ${context.plan})
+        INSERT INTO lessons (id, enrollment_id, lesson_type, status, title, scheduled_date, scheduled_time, source_position, summary)
+        VALUES (${lessonId}, ${enrollmentId}, 'planned', 'draft', ${context.course}, ${date}::date, ${scheduledTime}::time, ${source.label}, ${context.plan})
       `;
     }
 

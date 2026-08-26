@@ -39,8 +39,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, message: 'KIE_API_KEY не найден.' }, { status: 503 });
   }
 
-  const body = await request.json().catch(() => ({})) as { enrollmentId?: string };
+  const body = await request.json().catch(() => ({})) as { enrollmentId?: string; scheduledTime?: string };
   const enrollmentId = String(body.enrollmentId || '').trim();
+  const scheduledTime = /^\d{2}:\d{2}$/.test(String(body.scheduledTime || '')) ? String(body.scheduledTime) : null;
   if (!enrollmentId) {
     return NextResponse.json({ ok: false, message: 'Не выбран ученик.' }, { status: 400 });
   }
@@ -176,7 +177,9 @@ export async function POST(request: Request) {
     const date = todayString();
     const lessonRows = await sql<Array<{ id: string }>>`
       SELECT id FROM lessons
-      WHERE enrollment_id=${enrollmentId} AND scheduled_date=${date}::date AND lesson_type <> 'urgent'
+      WHERE enrollment_id=${enrollmentId} AND scheduled_date=${date}::date
+        AND (${scheduledTime}::text IS NULL OR scheduled_time=${scheduledTime}::time)
+        AND lesson_type <> 'urgent'
       ORDER BY created_at DESC LIMIT 1
     `;
     const lessonId = lessonRows[0]?.id || randomUUID();
@@ -185,8 +188,8 @@ export async function POST(request: Request) {
       await sql`UPDATE lessons SET summary=${plan}, source_position=${sourcePosition} WHERE id=${lessonId}`;
     } else {
       await sql`
-        INSERT INTO lessons (id, enrollment_id, lesson_type, status, title, scheduled_date, summary, source_position)
-        VALUES (${lessonId}, ${enrollmentId}, 'planned', 'draft', ${context.course}, ${date}::date, ${plan}, ${sourcePosition})
+        INSERT INTO lessons (id, enrollment_id, lesson_type, status, title, scheduled_date, scheduled_time, summary, source_position)
+        VALUES (${lessonId}, ${enrollmentId}, 'planned', 'draft', ${context.course}, ${date}::date, ${scheduledTime}::time, ${plan}, ${sourcePosition})
       `;
     }
 

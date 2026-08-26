@@ -9,6 +9,7 @@ import { db, dbConfigured } from '@/lib/db';
 import { getAppDateString, isoWeekday } from '@/lib/data';
 import { getGoogleDriveCourseFolder } from '@/lib/google-drive-source-folders';
 import { generateStudentLearningAdvice } from '@/lib/student-advice';
+import { validDuration, validStartTime, validWeekday } from '@/lib/schedule-utils';
 
 function requireDb() {
   if (!dbConfigured()) throw new Error('Сначала подключите PostgreSQL');
@@ -255,6 +256,7 @@ export async function configureStudentCourse(formData: FormData) {
   const courseId = String(formData.get('courseId') || '').trim();
   const weekdayRaw = String(formData.get('weekday') || '').trim();
   const time = String(formData.get('time') || '').trim();
+  const durationRaw = String(formData.get('durationMinutes') || '60').trim();
   const module = String(formData.get('module') || '').trim();
   const topic = String(formData.get('topic') || '').trim();
   const note = String(formData.get('note') || '').trim();
@@ -293,18 +295,22 @@ export async function configureStudentCourse(formData: FormData) {
     }
 
     const weekday = weekdayRaw ? Number(weekdayRaw) : null;
-    if (weekday && time) {
+    const durationMinutes = Number(durationRaw);
+    if (weekday && time && validWeekday(weekday) && validStartTime(time) && validDuration(durationMinutes)) {
       const same = await tx<Array<{ id: string }>>`
         SELECT id FROM schedule_rules
         WHERE enrollment_id=${enrollmentId}
           AND iso_weekday=${weekday}
           AND start_time=${time}::time
+        ORDER BY active DESC
         LIMIT 1
       `;
-      if (!same.length) {
+      if (same.length) {
+        await tx`UPDATE schedule_rules SET duration_minutes=${durationMinutes}, active=true WHERE id=${same[0].id}`;
+      } else {
         await tx`
-          INSERT INTO schedule_rules (id, enrollment_id, iso_weekday, start_time, active)
-          VALUES (${randomUUID()}, ${enrollmentId}, ${weekday}, ${time}::time, true)
+          INSERT INTO schedule_rules (id, enrollment_id, iso_weekday, start_time, duration_minutes, active)
+          VALUES (${randomUUID()}, ${enrollmentId}, ${weekday}, ${time}::time, ${durationMinutes}, true)
         `;
       }
     }
@@ -313,6 +319,62 @@ export async function configureStudentCourse(formData: FormData) {
   revalidatePath('/students');
   revalidatePath('/');
   revalidatePath('/urgent');
+}
+
+function scheduleValues(formData: FormData) {
+  const weekday = Number(String(formData.get('weekday') || ''));
+  const time = String(formData.get('time') || '').trim();
+  const durationMinutes = Number(String(formData.get('durationMinutes') || '60'));
+  return { weekday, time, durationMinutes };
+}
+
+export async function addScheduleRule(formData: FormData) {
+  const studentId = String(formData.get('studentId') || '').trim();
+  const enrollmentId = String(formData.get('enrollmentId') || '').trim();
+  const { weekday, time, durationMinutes } = scheduleValues(formData);
+  if (!studentId || !enrollmentId || !validWeekday(weekday) || !validStartTime(time) || !validDuration(durationMinutes)) return;
+  const sql = requireDb();
+  const enrollment = await sql<Array<{ id: string }>>`SELECT id FROM enrollments WHERE id=${enrollmentId} AND student_id=${studentId} AND active=true LIMIT 1`;
+  if (!enrollment.length) return;
+  const same = await sql<Array<{ id: string }>>`
+    SELECT id FROM schedule_rules WHERE enrollment_id=${enrollmentId} AND iso_weekday=${weekday} AND start_time=${time}::time ORDER BY active DESC LIMIT 1
+  `;
+  if (same.length) await sql`UPDATE schedule_rules SET duration_minutes=${durationMinutes}, active=true WHERE id=${same[0].id}`;
+  else await sql`INSERT INTO schedule_rules(id,enrollment_id,iso_weekday,start_time,duration_minutes,active) VALUES(${randomUUID()},${enrollmentId},${weekday},${time}::time,${durationMinutes},true)`;
+  revalidatePath(`/students/${studentId}`);
+  revalidatePath('/');
+  redirect(`/students/${studentId}?schedule=added#schedule`);
+}
+
+export async function updateScheduleRule(formData: FormData) {
+  const studentId = String(formData.get('studentId') || '').trim();
+  const scheduleId = String(formData.get('scheduleId') || '').trim();
+  const { weekday, time, durationMinutes } = scheduleValues(formData);
+  if (!studentId || !scheduleId || !validWeekday(weekday) || !validStartTime(time) || !validDuration(durationMinutes)) return;
+  const sql = requireDb();
+  const owned = await sql<Array<{ enrollmentId: string }>>`
+    SELECT sr.enrollment_id as "enrollmentId" FROM schedule_rules sr JOIN enrollments e ON e.id=sr.enrollment_id
+    WHERE sr.id=${scheduleId} AND e.student_id=${studentId} AND e.active=true LIMIT 1
+  `;
+  if (!owned.length) return;
+  const duplicate = await sql<Array<{ id: string }>>`
+    SELECT id FROM schedule_rules WHERE enrollment_id=${owned[0].enrollmentId} AND iso_weekday=${weekday} AND start_time=${time}::time AND active=true AND id<>${scheduleId} LIMIT 1
+  `;
+  if (duplicate.length) redirect(`/students/${studentId}?schedule=duplicate#schedule`);
+  await sql`UPDATE schedule_rules SET iso_weekday=${weekday},start_time=${time}::time,duration_minutes=${durationMinutes},active=true WHERE id=${scheduleId}`;
+  revalidatePath(`/students/${studentId}`);
+  revalidatePath('/');
+  redirect(`/students/${studentId}?schedule=updated#schedule`);
+}
+
+export async function deactivateScheduleRule(formData: FormData) {
+  const studentId = String(formData.get('studentId') || '').trim();
+  const scheduleId = String(formData.get('scheduleId') || '').trim();
+  if (!studentId || !scheduleId) return;
+  await requireDb()`UPDATE schedule_rules sr SET active=false FROM enrollments e WHERE sr.id=${scheduleId} AND e.id=sr.enrollment_id AND e.student_id=${studentId}`;
+  revalidatePath(`/students/${studentId}`);
+  revalidatePath('/');
+  redirect(`/students/${studentId}?schedule=removed#schedule`);
 }
 
 export async function createUrgentRequest(formData: FormData) {
@@ -397,7 +459,7 @@ async function createDraftsForDate(date: string) {
     await sql`
       INSERT INTO lessons (id, enrollment_id, lesson_type, status, title, scheduled_date, scheduled_time)
       SELECT ${randomUUID()}, ${row.enrollmentId}, 'planned', 'draft', ${row.course}, ${date}::date, ${row.startTime}::time
-      WHERE NOT EXISTS (SELECT 1 FROM lessons WHERE enrollment_id=${row.enrollmentId} AND scheduled_date=${date}::date AND lesson_type <> 'urgent')
+      WHERE NOT EXISTS (SELECT 1 FROM lessons WHERE enrollment_id=${row.enrollmentId} AND scheduled_date=${date}::date AND scheduled_time=${row.startTime}::time AND lesson_type <> 'urgent')
     `;
   }
   revalidatePath('/');

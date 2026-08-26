@@ -1,14 +1,17 @@
-import { ArrowLeft, BookOpenCheck, BrainCircuit, CalendarDays, CheckCircle2, Clock3, History, LifeBuoy, NotebookPen, RefreshCw, Sparkles, Target, UserRound } from 'lucide-react';
+import { ArrowLeft, BookOpenCheck, BrainCircuit, CalendarDays, CheckCircle2, Clock3, History, LifeBuoy, NotebookPen, Plus, RefreshCw, Sparkles, Target, Trash2, UserRound } from 'lucide-react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getAppDateString, getStudentDetails } from '@/lib/data';
 import {
   addLearningPlanItem,
   addRecyclingItem,
+  addScheduleRule,
   addStudentObservation,
   completeLearningPlanItem,
   completeRecyclingItem,
   generateStudentAdviceAction,
+  deactivateScheduleRule,
+  updateScheduleRule,
   updateStudentContext,
   updateStudentCurrentFocus,
 } from '../../actions';
@@ -17,6 +20,8 @@ import { SaveStatusButton } from './SaveStatusButton';
 import styles from './student.module.css';
 
 const weekdayNames = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'];
+const weekdayOptions = weekdayNames.map((label, index) => ({ value: index + 1, label }));
+const commonDurations = [30, 45, 60, 75, 90, 120];
 
 type AdviceView = {
   summary: string;
@@ -122,9 +127,35 @@ export default async function StudentPage({ params, searchParams }: PageProps<'/
         </article>)}</div> : <p className="muted small">Курс пока не настроен.</p>}
       </section>
 
-      <section className="panel">
+      <section className={`panel ${styles.wide}`} id="schedule">
         <div className="panel-title"><h2><Clock3 size={18}/>Текущее расписание</h2></div>
-        {student.schedule.length ? <ul className={styles.schedule}>{student.schedule.map((item) => <li key={item.id}><span>{weekdayNames[item.weekday - 1]}</span><strong>{item.time}</strong><small>{item.course}</small></li>)}</ul> : <p className="muted small">Занятия пока не добавлены в расписание.</p>}
+        {query.schedule === 'duplicate' && <div className="notice warning">Такой день и время уже есть у этого курса. Измените существующий слот.</div>}
+        {query.schedule && query.schedule !== 'duplicate' && <div className="notice success">Расписание обновлено.</div>}
+        {student.courses.length ? <div className={styles.scheduleCourses}>{student.courses.map((course) => {
+          const slots = student.schedule.filter((item) => item.enrollmentId === course.enrollmentId);
+          return <article className={styles.scheduleCourse} key={course.enrollmentId}>
+            <div className={styles.scheduleCourseHead}><strong>{course.title}</strong><span>{slots.length} занятий в неделю</span></div>
+            {slots.length ? <ul className={styles.schedule}>{slots.map((item) => <li key={item.id}>
+              <div className={styles.slotSummary}><span>{weekdayNames[item.weekday - 1]} · {item.time} · {item.durationMinutes} мин</span></div>
+              <details className={styles.slotEditor}><summary>Изменить</summary><form action={updateScheduleRule} className={styles.slotForm}>
+                <input type="hidden" name="studentId" value={studentId}/><input type="hidden" name="scheduleId" value={item.id}/>
+                <label>День<select name="weekday" defaultValue={item.weekday}>{weekdayOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+                <label>Время<input name="time" type="time" required defaultValue={item.time}/></label>
+                <label>Длительность<input name="durationMinutes" type="number" min="30" max="180" step="1" list="common-durations" required defaultValue={item.durationMinutes}/></label>
+                <button className="button" type="submit">Сохранить</button>
+              </form></details>
+              <form action={deactivateScheduleRule}><input type="hidden" name="studentId" value={studentId}/><input type="hidden" name="scheduleId" value={item.id}/><button className={styles.deleteSlot} type="submit"><Trash2 size={14}/>Удалить</button></form>
+            </li>)}</ul> : <p className="muted small">Для этого курса занятий пока нет.</p>}
+            <details className={styles.addSlot}><summary><Plus size={15}/>Добавить занятие</summary><form action={addScheduleRule} className={styles.slotForm}>
+              <input type="hidden" name="studentId" value={studentId}/><input type="hidden" name="enrollmentId" value={course.enrollmentId}/>
+              <label>День<select name="weekday" required defaultValue="1">{weekdayOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+              <label>Время<input name="time" type="time" required/></label>
+              <label>Длительность<input name="durationMinutes" type="number" min="30" max="180" step="1" list="common-durations" required defaultValue="60"/></label>
+              <button className="button primary" type="submit">Добавить</button>
+            </form></details>
+          </article>;
+        })}</div> : <p className="muted small">Сначала настройте ученику курс.</p>}
+        <datalist id="common-durations">{commonDurations.map((duration) => <option key={duration} value={duration}>{duration} мин</option>)}</datalist>
       </section>
 
       <section className={`panel ${styles.wide} ${styles.observationPanel}`}>
