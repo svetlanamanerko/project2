@@ -133,13 +133,23 @@ export type StudentDetails = {
   notes: string | null;
   courses: Array<{
     enrollmentId: string;
+    courseId: string;
     title: string;
     module: string | null;
     topic: string | null;
     note: string | null;
     currentStage: string | null;
     currentLesson: string | null;
+    currentMapItemId: string | null;
+    positionNote: string | null;
     completedBeforeTracking: boolean;
+    mapItems: Array<{
+      id: string;
+      position: number;
+      stage: string;
+      lesson: string | null;
+      title: string;
+    }>;
   }>;
   schedule: Array<{
     id: string;
@@ -200,7 +210,17 @@ export async function getStudentDetails(studentId: string): Promise<StudentDetai
 
   const [courses, schedule, recentLessons, observations, recommendations, learningPlan, recycling] = await Promise.all([
     sql<StudentDetails['courses']>`
-      SELECT e.id as "enrollmentId", c.title, sp.module, sp.topic, sp.note, p.stage_label as "currentStage", p.lesson_label as "currentLesson", COALESCE(p.completed_before_tracking,false) as "completedBeforeTracking"
+      SELECT e.id as "enrollmentId", c.id as "courseId", c.title, sp.module, sp.topic, sp.note,
+             p.stage_label as "currentStage", p.lesson_label as "currentLesson",
+             p.current_map_item_id as "currentMapItemId", p.note as "positionNote",
+             COALESCE(p.completed_before_tracking,false) as "completedBeforeTracking",
+             COALESCE((
+               SELECT json_agg(json_build_object(
+                 'id', m.id, 'position', m.position, 'stage', m.stage_label,
+                 'lesson', m.lesson_label, 'title', m.title
+               ) ORDER BY m.position)
+               FROM course_map_items m WHERE m.course_id=c.id
+             ), '[]'::json) as "mapItems"
       FROM enrollments e
       JOIN courses c ON c.id=e.course_id AND c.active=true
       LEFT JOIN school_positions sp ON sp.enrollment_id=e.id

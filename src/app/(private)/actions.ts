@@ -514,15 +514,79 @@ export async function createTomorrowDrafts() {
 }
 
 export async function setStudentCoursePosition(formData: FormData) {
-  const enrollmentId=String(formData.get('enrollmentId')||'').trim(); const mapItemId=String(formData.get('mapItemId')||'').trim();
-  const stage=String(formData.get('stage')||'').trim(); const lesson=String(formData.get('lesson')||'').trim(); const note=String(formData.get('note')||'').trim();
-  const previous=formData.get('completedBeforeTracking')==='on'; if(!enrollmentId||!stage)return;
-  const sql=requireDb(); await sql.begin(async(tx)=>{const valid=await tx<Array<{studentId:string;courseId:string;position:number|null}>>`
-    SELECT e.student_id as "studentId",e.course_id as "courseId",m.position FROM enrollments e LEFT JOIN course_map_items m ON m.id=${mapItemId||null} AND m.course_id=e.course_id WHERE e.id=${enrollmentId} AND e.active=true LIMIT 1`;
-    if(!valid.length||mapItemId&&!valid[0].position)return;
-    await tx`INSERT INTO student_course_positions(enrollment_id,current_map_item_id,stage_label,lesson_label,completed_before_tracking,note,updated_at) VALUES(${enrollmentId},${mapItemId||null},${stage},${lesson||null},${previous},${note||null},now()) ON CONFLICT(enrollment_id) DO UPDATE SET current_map_item_id=EXCLUDED.current_map_item_id,stage_label=EXCLUDED.stage_label,lesson_label=EXCLUDED.lesson_label,completed_before_tracking=EXCLUDED.completed_before_tracking,note=EXCLUDED.note,updated_at=now()`;
-    if(mapItemId){await tx`INSERT INTO student_course_stage_statuses(enrollment_id,course_map_item_id,status) VALUES(${enrollmentId},${mapItemId},'in_progress') ON CONFLICT(enrollment_id,course_map_item_id) DO UPDATE SET status='in_progress',updated_at=now()`;if(previous)await tx`INSERT INTO student_course_stage_statuses(enrollment_id,course_map_item_id,status) SELECT ${enrollmentId},id,'completed_before_tracking' FROM course_map_items WHERE course_id=${valid[0].courseId} AND position<${valid[0].position} ON CONFLICT(enrollment_id,course_map_item_id) DO UPDATE SET status='completed_before_tracking',updated_at=now()`;}
-  }); revalidatePath('/students/progress'); revalidatePath('/students'); revalidatePath('/');
+  const enrollmentId = String(formData.get('enrollmentId') || '').trim();
+  const requestedStudentId = String(formData.get('studentId') || '').trim();
+  const mapItemId = String(formData.get('mapItemId') || '').trim();
+  const stage = String(formData.get('stage') || '').trim();
+  const lesson = String(formData.get('lesson') || '').trim();
+  const note = String(formData.get('note') || '').trim();
+  const previous = formData.get('completedBeforeTracking') === 'on';
+  if (!enrollmentId || (!mapItemId && !stage)) return;
+
+  let studentId = '';
+  const sql = requireDb();
+  await sql.begin(async (tx) => {
+    const valid = await tx<Array<{ studentId: string; courseId: string; position: number | null; mapStage: string | null; mapLesson: string | null }>>`
+      SELECT e.student_id as "studentId", e.course_id as "courseId", m.position,
+             m.stage_label as "mapStage", m.lesson_label as "mapLesson"
+      FROM enrollments e
+      LEFT JOIN course_map_items m ON m.id=${mapItemId || null} AND m.course_id=e.course_id
+      WHERE e.id=${enrollmentId} AND e.active=true
+        AND (${requestedStudentId || null}::text IS NULL OR e.student_id=${requestedStudentId || null})
+      LIMIT 1
+    `;
+    if (!valid.length || (mapItemId && !valid[0].position)) return;
+    studentId = valid[0].studentId;
+    const effectiveStage = mapItemId ? valid[0].mapStage : stage;
+    const effectiveLesson = mapItemId ? valid[0].mapLesson : lesson;
+    if (!effectiveStage) return;
+    await tx`
+      INSERT INTO student_course_positions(
+        enrollment_id,current_map_item_id,stage_label,lesson_label,completed_before_tracking,note,updated_at
+      ) VALUES(${enrollmentId},${mapItemId || null},${effectiveStage},${effectiveLesson || null},${previous},${note || null},now())
+      ON CONFLICT(enrollment_id) DO UPDATE SET
+        current_map_item_id=EXCLUDED.current_map_item_id,stage_label=EXCLUDED.stage_label,
+        lesson_label=EXCLUDED.lesson_label,completed_before_tracking=EXCLUDED.completed_before_tracking,
+        note=EXCLUDED.note,updated_at=now()
+    `;
+    if (mapItemId) {
+      await tx`
+        INSERT INTO student_course_stage_statuses(enrollment_id,course_map_item_id,status)
+        VALUES(${enrollmentId},${mapItemId},'in_progress')
+        ON CONFLICT(enrollment_id,course_map_item_id) DO UPDATE SET status='in_progress',updated_at=now()
+      `;
+      if (previous) await tx`
+        INSERT INTO student_course_stage_statuses(enrollment_id,course_map_item_id,status)
+        SELECT ${enrollmentId},id,'completed_before_tracking' FROM course_map_items
+        WHERE course_id=${valid[0].courseId} AND position<${valid[0].position}
+        ON CONFLICT(enrollment_id,course_map_item_id)
+        DO UPDATE SET status='completed_before_tracking',updated_at=now()
+      `;
+    }
+  });
+  revalidatePath('/students/progress');
+  revalidatePath('/students');
+  if (studentId) revalidatePath(`/students/${studentId}`);
+  revalidatePath('/');
+}
+
+export async function updateStudentSchoolPosition(formData: FormData) {
+  const studentId = String(formData.get('studentId') || '').trim();
+  const enrollmentId = String(formData.get('enrollmentId') || '').trim();
+  const module = String(formData.get('module') || '').trim();
+  const topic = String(formData.get('topic') || '').trim();
+  if (!studentId || !enrollmentId) return;
+  await requireDb()`
+    INSERT INTO school_positions (enrollment_id, module, topic, updated_at)
+    SELECT e.id, ${module || null}, ${topic || null}, now()
+    FROM enrollments e
+    WHERE e.id=${enrollmentId} AND e.student_id=${studentId} AND e.active=true
+    ON CONFLICT (enrollment_id) DO UPDATE SET
+      module=EXCLUDED.module, topic=EXCLUDED.topic, updated_at=now()
+  `;
+  revalidatePath(`/students/${studentId}`);
+  revalidatePath('/students');
+  revalidatePath('/');
 }
 
 export async function addCourseMapItem(formData: FormData) {

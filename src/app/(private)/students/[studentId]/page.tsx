@@ -1,4 +1,4 @@
-import { ArrowLeft, BookOpenCheck, BrainCircuit, CalendarDays, CheckCircle2, Clock3, History, LifeBuoy, NotebookPen, Plus, RefreshCw, Sparkles, Target, Trash2, UserRound } from 'lucide-react';
+import { ArrowLeft, BookOpenCheck, BrainCircuit, CalendarDays, CheckCircle2, Clock3, History, LifeBuoy, NotebookPen, Pencil, Plus, RefreshCw, Sparkles, Target, Trash2, UserRound } from 'lucide-react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getAppDateString, getStudentDetails } from '@/lib/data';
@@ -14,8 +14,10 @@ import {
   generateStudentAdviceAction,
   deactivateScheduleRule,
   updateScheduleRule,
+  setStudentCoursePosition,
   updateStudentContext,
   updateStudentCurrentFocus,
+  updateStudentSchoolPosition,
 } from '../../actions';
 import { AdviceSubmitButton } from './AdviceSubmitButton';
 import { SaveStatusButton } from './SaveStatusButton';
@@ -120,11 +122,37 @@ export default async function StudentPage({ params, searchParams }: PageProps<'/
         <div className="panel-title"><h2><BookOpenCheck size={18}/>Обучение сейчас</h2><span className="count-badge">{student.courses.length}</span></div>
         {student.courses.length ? <div className={styles.courseList}>{student.courses.map((course) => <article className={styles.courseCard} key={course.enrollmentId}>
           <strong>{course.title}</strong>
-          <dl><div><dt>Фактическая позиция</dt><dd>{course.currentStage || 'Не настроена'}{course.currentLesson ? ` / ${course.currentLesson}` : ''}</dd></div><div><dt>Тема школы</dt><dd>{course.topic || 'Не указана'}</dd></div></dl>{course.completedBeforeTracking&&<p className="muted small">Предыдущие этапы пройдены до начала журнала.</p>}
+          <div className={styles.learningFields}>
+            <section className={styles.learningField}>
+              <div className={styles.learningFieldHead}><div><span>Фактическая позиция</span><strong>{course.currentStage || 'Не настроена'}{course.currentLesson ? ` / ${course.currentLesson}` : ''}</strong></div></div>
+              <details className={styles.inlineEditor}><summary><Pencil size={14}/>{course.currentStage ? 'Изменить' : 'Настроить'}</summary>
+                <form action={setStudentCoursePosition} className={styles.inlineEditorForm}>
+                  <input type="hidden" name="studentId" value={studentId}/><input type="hidden" name="enrollmentId" value={course.enrollmentId}/>
+                  {course.mapItems.length > 0 && <label>Course Map item<select name="mapItemId" defaultValue={course.currentMapItemId || ''}><option value="">Указать вручную</option>{course.mapItems.map((item) => <option key={item.id} value={item.id}>{item.position}. {item.stage}{item.lesson ? ` / ${item.lesson}` : ''} — {item.title}</option>)}</select></label>}
+                  <label>Текущий этап<input name="stage" required defaultValue={course.currentStage || ''} placeholder="Старт ОГЭ, Module 2…"/></label>
+                  <label>Текущий урок<input name="lesson" defaultValue={course.currentLesson || ''} placeholder="Урок 1 — необязательно"/></label>
+                  <label className={styles.inlineCheckbox}><input type="checkbox" name="completedBeforeTracking" defaultChecked={course.completedBeforeTracking}/>Предыдущие этапы пройдены до начала журнала</label>
+                  <label>Комментарий<textarea name="note" rows={2} defaultValue={course.positionNote || ''} placeholder="Необязательно"/></label>
+                  <SaveStatusButton className="button primary" idleLabel="Сохранить позицию" pendingLabel="Сохраняю…"/>
+                </form>
+              </details>
+            </section>
+            <section className={styles.learningField}>
+              <div className={styles.learningFieldHead}><div><span>Тема школы</span><strong>{course.module ? `${course.module}${course.topic ? ' · ' : ''}` : ''}{course.topic || 'Не указана'}</strong></div></div>
+              <details className={styles.inlineEditor}><summary><Pencil size={14}/>{course.module || course.topic ? 'Изменить' : 'Указать тему'}</summary>
+                <form action={updateStudentSchoolPosition} className={styles.inlineEditorForm}>
+                  <input type="hidden" name="studentId" value={studentId}/><input type="hidden" name="enrollmentId" value={course.enrollmentId}/>
+                  <label>Модуль / Unit<input name="module" defaultValue={course.module || ''} placeholder="Module 2 — необязательно"/></label>
+                  <label>Текущая школьная тема<input name="topic" defaultValue={course.topic || ''} placeholder="Travelling"/></label>
+                  <SaveStatusButton className="button primary" idleLabel="Сохранить тему" pendingLabel="Сохраняю…"/>
+                </form>
+              </details>
+            </section>
+          </div>{course.completedBeforeTracking&&<p className="muted small">Предыдущие этапы пройдены до начала журнала.</p>}
           <form action={updateStudentCurrentFocus} className={styles.focusForm}>
             <input type="hidden" name="studentId" value={studentId}/><input type="hidden" name="enrollmentId" value={course.enrollmentId}/>
             <label>Что важно сейчас<textarea name="note" rows={2} defaultValue={course.note || ''} placeholder="Короткая текущая задача: диагностика, контрольная, слабое говорение…"/></label>
-            <SaveStatusButton idleLabel="Обновить"/>
+            <SaveStatusButton idleLabel="Сохранить фокус"/>
           </form>
         </article>)}</div> : <p className="muted small">Курс пока не настроен.</p>}
       </section>
