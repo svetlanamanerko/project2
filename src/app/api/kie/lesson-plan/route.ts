@@ -5,6 +5,7 @@ import { db, dbConfigured } from '@/lib/db';
 import { prepareLessonSource, type PreparedLessonSource } from '@/lib/lesson-source';
 import { buildLessonContext } from '@/lib/lesson-context';
 import { generateKieText, KieRequestError, type KieInputPart } from '@/lib/ai-routing';
+import { courseMethodologyPrompt } from '@/lib/course-profile';
 
 function extractText(payload: unknown) {
   if (!payload || typeof payload !== 'object') return '';
@@ -124,6 +125,7 @@ export async function POST(request: Request) {
     : 'наблюдений пока нет';
 
   const sourceContext = [
+    `${courseMethodologyPrompt(context.courseProfile)}\nПравила применения: это постоянная педагогическая настройка. Применяй её, если она не конфликтует с реальным источником и текущей целью ученика. Текущие реальные данные ученика важнее шаблонной методики. Методика не определяет фактическую текущую позицию и не заменяет student context.`,
     `Ученик: ${context.student}${context.grade ? `, ${context.grade} класс` : ''}`,
     `Постоянный контекст ученика: ${context.studentContext || 'не заполнен'}`,
     `Курс: ${context.course}`,

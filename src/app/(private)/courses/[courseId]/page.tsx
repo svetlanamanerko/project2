@@ -3,7 +3,8 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getCourseDetails, getCourseMapItems } from '@/lib/data';
 import { getGoogleDriveSourceFolders } from '@/lib/google-drive-source-folders';
-import { addCourseMapItem, updateCourse, updateCourseSource } from '../../actions';
+import { getCourseMethodology } from '@/lib/course-profile';
+import { addCourseMapItem, updateCourse, updateCourseMethodology, updateCourseSource } from '../../actions';
 import { CourseDeleteButton } from '../CourseDeleteButton';
 import styles from './course.module.css';
 
@@ -26,6 +27,7 @@ export default async function CoursePage({ params, searchParams }: PageProps<'/c
     drive = { connected: true, libraryRoot: null, folders: [], error: true };
   }
   const sourceFolder = drive.folders.find((folder) => folder.id === course.driveFolderId) || null;
+  const methodology = getCourseMethodology(course.courseProfile);
 
   return <>
     <Link className={styles.backLink} href="/courses"><ArrowLeft size={16}/>Все курсы</Link>
@@ -45,6 +47,18 @@ export default async function CoursePage({ params, searchParams }: PageProps<'/c
     {query.source === 'invalid' && <div className="notice warning">Не удалось выбрать папку. Обновите список и попробуйте ещё раз.</div>}
 
     <div className={styles.grid}>
+      <section className={`panel ${styles.methodologyPanel}`} id="methodology">
+        <div className="panel-title"><div><h2>Методика курса</h2><p className="muted small">Постоянные правила, по которым Мастерская готовит уроки по этому курсу.</p></div></div>
+        {methodology ? <p className={styles.methodologyText}>{methodology}</p> : <p className="muted small">Методика курса пока не заполнена.</p>}
+        <details className={styles.methodologyEditor}>
+          <summary>{methodology ? 'Изменить' : 'Настроить методику'}</summary>
+          <form action={updateCourseMethodology}>
+            <input type="hidden" name="courseId" value={courseId}/>
+            <label>Как мы работаем по этому курсу<textarea name="methodology" rows={10} defaultValue={methodology || ''} placeholder={'Учебник — каркас урока. Лексику активно отрабатываем…\nGrammar: explanation → practice → speaking…\nStudent Worksheet без ответов…'}/></label>
+            <button className="button primary" type="submit">Сохранить методику</button>
+          </form>
+        </details>
+      </section>
       <section className={`panel ${styles.editPanel}`} id="course-map"><div className="panel-title"><div><h2>Course Map</h2><p className="muted small">Общий маршрут курса: что и в каком порядке проходить.</p></div><span className="count-badge">{courseMap.length}</span></div>{courseMap.length?<div className={styles.lessonList}>{courseMap.map((item)=><article key={item.id}><div><strong>{item.stage}{item.lesson?` / ${item.lesson}`:''} — {item.title}</strong><span>Шаг {item.position}</span></div></article>)}</div>:<p className="muted small">Маршрут пока пуст.</p>}<details className={styles.sourcePicker}><summary>Добавить этап</summary><form action={addCourseMapItem}><input type="hidden" name="courseId" value={courseId}/><label>Порядок<input name="position" type="number" min="1" required defaultValue={courseMap.length+1}/></label><label>Этап<input name="stage" required placeholder="Block 3 / Module 5"/></label><label>Урок<input name="lesson" placeholder="5b"/></label><label>Название<input name="title" required placeholder="Travelling"/></label><label>Тема<input name="topic"/></label><label>Раздел ОГЭ / skill<input name="section" placeholder="Speaking"/></label><button className="button primary" type="submit">Сохранить этап</button></form></details></section>
       <section className={`panel ${styles.sourcePanel}`} id="source">
         <div className="panel-title"><h2><FolderOpen size={18}/>Google Drive</h2><span className={`status ${sourceFolder ? 'status-prepared' : 'status-draft'}`}>{sourceFolder ? 'Подключено' : 'Не подключено'}</span></div>

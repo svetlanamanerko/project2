@@ -233,6 +233,20 @@ export async function updateCourse(formData: FormData) {
   revalidatePath(`/courses/${courseId}`);
 }
 
+export async function updateCourseMethodology(formData: FormData) {
+  const courseId = String(formData.get('courseId') || '').trim();
+  const methodology = String(formData.get('methodology') || '').trim();
+  if (!courseId) return;
+
+  await requireDb()`
+    UPDATE courses
+    SET course_profile = COALESCE(course_profile, '{}'::jsonb)
+      || jsonb_build_object('methodology', ${methodology || null})
+    WHERE id=${courseId} AND active=true
+  `;
+  revalidatePath(`/courses/${courseId}`);
+}
+
 export async function updateCourseSource(formData: FormData) {
   const courseId = String(formData.get('courseId') || '').trim();
   const folderId = String(formData.get('folderId') || '').trim();

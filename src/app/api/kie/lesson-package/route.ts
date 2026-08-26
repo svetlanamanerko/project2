@@ -7,6 +7,7 @@ import { buildLessonDocx } from '@/lib/lesson-docx';
 import { generatedDocxMimeType, uploadLessonPackageFiles } from '@/lib/generated-materials-drive';
 import { buildLessonContext } from '@/lib/lesson-context';
 import { generateKieText, KieRequestError } from '@/lib/ai-routing';
+import { courseMethodologyPrompt } from '@/lib/course-profile';
 
 type PackageDraft = {
   title: string;
@@ -201,6 +202,7 @@ export async function POST(request: Request) {
   }
 
   const contextText = [
+    `${courseMethodologyPrompt(context.courseProfile)}\nПравила применения: это постоянная педагогическая настройка. Применяй её, если она не конфликтует с реальным источником и текущей целью ученика. Текущие реальные данные ученика важнее шаблонной методики. Методика не определяет фактическую текущую позицию и не заменяет student context.`,
     `Ученик: ${context.student}${context.grade ? `, ${context.grade} класс` : ''}`,
     `Курс: ${context.course}`,
     `Школьный раздел: ${context.module || 'не указан'}`,

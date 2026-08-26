@@ -10,6 +10,7 @@
     "test:schedule": "node --experimental-strip-types scripts/check-schedule.mjs",
     "test:navigator": "node --experimental-strip-types scripts/check-navigator.mjs",
     "test:ai-routing": "node --experimental-strip-types scripts/check-ai-routing.mjs",
+    "test:course-methodology": "node --experimental-strip-types scripts/check-course-methodology.mjs",
     "start": "next start -H 0.0.0.0 -p ${PORT:-3000}",
     "migrate": "node scripts/migrate.mjs"
   },
