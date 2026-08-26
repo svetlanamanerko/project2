@@ -11,6 +11,8 @@ import { getGoogleDriveCourseFolder } from '@/lib/google-drive-source-folders';
 import { generateStudentLearningAdvice } from '@/lib/student-advice';
 import { validDuration, validStartTime, validWeekday } from '@/lib/schedule-utils';
 import { normalizeLearningLabel, validLearningPriority } from '@/lib/learning-queue-utils';
+import { runHistoryBootstrap } from '@/lib/history-bootstrap';
+import { findingFingerprint, type HistoryBootstrapAnalysis } from '@/lib/history-bootstrap-utils';
 
 function requireDb() {
   if (!dbConfigured()) throw new Error('Сначала подключите PostgreSQL');
@@ -150,6 +152,91 @@ export async function addLearningPlanItem(formData: FormData) {
   `;
   revalidatePath(`/students/${studentId}`);
   if (fromStudentCard) redirect(`/students/${studentId}?queue=plan-added#learning-plan`);
+}
+
+export async function generateHistoryBootstrapAction(formData: FormData) {
+  const studentId = String(formData.get('studentId') || '').trim();
+  const enrollmentId = String(formData.get('enrollmentId') || '').trim();
+  if (!studentId || !enrollmentId) return;
+  try {
+    await runHistoryBootstrap(studentId, enrollmentId);
+  } catch (error) {
+    console.error('[history-bootstrap] Analysis failed:', error);
+    const message = error instanceof Error ? error.message : '';
+    redirect(`/students/${studentId}?history=${/drive|google/i.test(message) ? 'drive-error' : 'ai-error'}#history-${enrollmentId}`);
+  }
+  revalidatePath(`/students/${studentId}`);
+  redirect(`/students/${studentId}?history=review#history-${enrollmentId}`);
+}
+
+export async function confirmHistoryBootstrapAction(formData: FormData) {
+  const studentId = String(formData.get('studentId') || '').trim();
+  const enrollmentId = String(formData.get('enrollmentId') || '').trim();
+  const runId = String(formData.get('runId') || '').trim();
+  if (!studentId || !enrollmentId || !runId) return;
+  const sql = requireDb();
+  const rows = await sql<Array<{ analysis: HistoryBootstrapAnalysis }>>`
+    SELECT r.analysis FROM history_bootstrap_runs r
+    JOIN enrollments e ON e.id=r.enrollment_id
+    WHERE r.id=${runId} AND r.enrollment_id=${enrollmentId} AND r.status='draft'
+      AND e.student_id=${studentId} AND e.active=true LIMIT 1
+  `;
+  const analysis = rows[0]?.analysis;
+  if (!analysis || !Array.isArray(analysis.findings)) return;
+  const questionAnswers = Object.fromEntries(analysis.questions.map((question) => [question.id, String(formData.get(`question-${question.id}`) || '').trim()]));
+
+  await sql.begin(async (tx) => {
+    for (const [index, finding] of analysis.findings.entries()) {
+      const included = formData.get(`include-${index}`) === 'on';
+      const stage = String(formData.get(`stage-${index}`) || finding.stage || '').trim();
+      const lesson = String(formData.get(`lesson-${index}`) || finding.lesson || '').trim();
+      const topic = String(formData.get(`topic-${index}`) || finding.topic || '').trim();
+      const teacherNote = String(formData.get(`note-${index}`) || '').trim();
+      const fingerprint = findingFingerprint(enrollmentId, finding);
+      const details = {
+        pages: finding.pages,
+        grammar: finding.grammar,
+        vocabulary: finding.vocabulary,
+        skills: finding.skills,
+        evidence: finding.sourceRefs.map((ref) => ref.id),
+        association: finding.association,
+        questionAnswers,
+      };
+      await tx`
+        INSERT INTO historical_coverage(
+          id,enrollment_id,fingerprint,status,stage_label,lesson_label,topic,coverage_summary,
+          confidence,source_refs,details,teacher_note
+        ) VALUES(
+          ${randomUUID()},${enrollmentId},${fingerprint},${included ? 'confirmed' : 'rejected'},
+          ${stage || null},${lesson || null},${topic || null},${finding.coverageSummary},${finding.confidence},
+          ${JSON.stringify(finding.sourceRefs)}::jsonb,${JSON.stringify(details)}::jsonb,${teacherNote || null}
+        )
+        ON CONFLICT(enrollment_id,fingerprint) DO UPDATE SET
+          status=EXCLUDED.status,stage_label=EXCLUDED.stage_label,lesson_label=EXCLUDED.lesson_label,
+          topic=EXCLUDED.topic,coverage_summary=EXCLUDED.coverage_summary,confidence=EXCLUDED.confidence,
+          source_refs=EXCLUDED.source_refs,details=EXCLUDED.details,teacher_note=EXCLUDED.teacher_note,updated_at=now()
+      `;
+    }
+    for (const question of analysis.questions) {
+      const answer = questionAnswers[question.id]?.toLocaleLowerCase('ru-RU');
+      if (!['needs_repeat', 'repeat', 'нужно повторить'].includes(answer)) continue;
+      const related = analysis.findings.find((finding) => question.relatedFindingKeys.includes(finding.key));
+      const label = normalizeLearningLabel(related?.topic || related?.coverageSummary || '');
+      if (!label) continue;
+      await tx`
+        INSERT INTO recycling_items(id,enrollment_id,label,category,priority,status)
+        SELECT ${randomUUID()},${enrollmentId},${label},'history_bootstrap',2,'active'
+        WHERE NOT EXISTS(
+          SELECT 1 FROM recycling_items WHERE enrollment_id=${enrollmentId}
+            AND status='active' AND lower(trim(label))=lower(${label})
+        )
+      `;
+    }
+    await tx`UPDATE history_bootstrap_runs SET status='confirmed',updated_at=now() WHERE id=${runId}`;
+  });
+  revalidatePath(`/students/${studentId}`);
+  revalidatePath('/');
+  redirect(`/students/${studentId}?history=confirmed#history-${enrollmentId}`);
 }
 
 export async function addRecyclingItem(formData: FormData) {

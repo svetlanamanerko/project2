@@ -1,7 +1,8 @@
-import { ArrowLeft, BookOpenCheck, BrainCircuit, CalendarDays, CheckCircle2, Clock3, History, LifeBuoy, NotebookPen, Pencil, Plus, RefreshCw, Sparkles, Target, Trash2, UserRound } from 'lucide-react';
+import { ArchiveRestore, ArrowLeft, BookOpenCheck, BrainCircuit, CalendarDays, CheckCircle2, Clock3, History, LifeBuoy, NotebookPen, Pencil, Plus, RefreshCw, Sparkles, Target, Trash2, UserRound } from 'lucide-react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getAppDateString, getStudentDetails } from '@/lib/data';
+import { getStudentHistoryBootstrapView } from '@/lib/history-bootstrap';
 import {
   addLearningPlanItem,
   addRecyclingItem,
@@ -12,6 +13,8 @@ import {
   deactivateLearningPlanItem,
   deactivateRecyclingItem,
   generateStudentAdviceAction,
+  generateHistoryBootstrapAction,
+  confirmHistoryBootstrapAction,
   deactivateScheduleRule,
   updateScheduleRule,
   setStudentCoursePosition,
@@ -86,7 +89,7 @@ function normalizeCredits(value: unknown) {
 
 export default async function StudentPage({ params, searchParams }: PageProps<'/students/[studentId]'>) {
   const [{ studentId }, query] = await Promise.all([params, searchParams]);
-  const student = await getStudentDetails(studentId);
+  const [student, historyBootstrap] = await Promise.all([getStudentDetails(studentId), getStudentHistoryBootstrapView(studentId)]);
   if (!student) notFound();
 
   const latestAdviceRecord = student.recommendations[0] || null;
@@ -154,6 +157,48 @@ export default async function StudentPage({ params, searchParams }: PageProps<'/
             <label>Что важно сейчас<textarea name="note" rows={2} defaultValue={course.note || ''} placeholder="Короткая текущая задача: диагностика, контрольная, слабое говорение…"/></label>
             <SaveStatusButton idleLabel="Сохранить фокус"/>
           </form>
+          {(() => {
+            const run = historyBootstrap.runs.find((item) => item.enrollmentId === course.enrollmentId) || null;
+            const confirmed = historyBootstrap.coverage.filter((item) => item.enrollmentId === course.enrollmentId && item.status === 'confirmed');
+            const materialCount = new Set(confirmed.flatMap((item) => item.sourceRefs || []).map((ref) => ref.id)).size;
+            return <section className={styles.historyBootstrap} id={`history-${course.enrollmentId}`}>
+              <div className={styles.historyBootstrapHead}><div><ArchiveRestore size={17}/><div><strong>История до Мастерской</strong><span>{course.title}</span></div></div></div>
+              {query.history === 'drive-error' && <div className="notice warning">Не удалось прочитать папку курса. История не изменена.</div>}
+              {query.history === 'ai-error' && <div className="notice warning">Не удалось проанализировать старые материалы. История не изменена.</div>}
+              {query.history === 'confirmed' && <div className="notice success">История подтверждена преподавателем.</div>}
+              {confirmed.length > 0 ? <>
+                <p className="muted small">Найдено и подтверждено:</p>
+                <ul className={styles.coverageList}>{confirmed.map((item) => <li key={item.id}><strong>{item.stage || item.topic || 'Исторический материал'}{item.lesson ? ` / ${item.lesson}` : ''}</strong><span>{item.summary}</span><small>{item.confidence.toUpperCase()} · источников: {(item.sourceRefs || []).length}</small></li>)}</ul>
+                <p className="muted small">Использовано старых материалов: {materialCount}</p>
+              </> : !run?.analysis && <p className="muted small">Старые материалы ещё не анализировались.</p>}
+
+              {run?.status === 'draft' && run.analysis && <div className={styles.historyReview}>
+                <h3>Черновик восстановленной истории</h3>
+                <p>{run.analysis.summary}</p>
+                {run.analysis.findings.length === 0 ? <div className="notice">Подходящих старых материалов не найдено. Можно указать текущую позицию вручную.</div> : <form action={confirmHistoryBootstrapAction} className={styles.historyReviewForm}>
+                  <input type="hidden" name="studentId" value={studentId}/><input type="hidden" name="enrollmentId" value={course.enrollmentId}/><input type="hidden" name="runId" value={run.id}/>
+                  {run.analysis.findings.map((finding, index) => <fieldset key={finding.key} className={styles.historyFinding}>
+                    <label className={styles.findingToggle}><input type="checkbox" name={`include-${index}`} defaultChecked={finding.association === 'student_specific'}/><span>Включить в подтверждённую историю</span></label>
+                    <p>{finding.coverageSummary}</p>
+                    <small>{finding.confidence.toUpperCase()} · {finding.association === 'student_specific' ? 'есть связь с учеником' : 'общий материал — нужна проверка'}</small>
+                    <div className={styles.findingFields}><label>Этап<input name={`stage-${index}`} defaultValue={finding.stage || ''}/></label><label>Урок<input name={`lesson-${index}`} defaultValue={finding.lesson || ''}/></label><label>Тема<input name={`topic-${index}`} defaultValue={finding.topic || ''}/></label><label>Комментарий<input name={`note-${index}`}/></label></div>
+                    {(finding.sourceRefs || []).length > 0 && <ul className={styles.sourceRefs}>{finding.sourceRefs.map((ref) => <li key={ref.id}>{ref.url ? <a href={ref.url} target="_blank" rel="noreferrer">{ref.title}</a> : ref.title}<span>{ref.path}</span></li>)}</ul>}
+                  </fieldset>)}
+                  {run.analysis.questions.length > 0 && <div className={styles.historyQuestions}><h4>Нужно уточнить</h4>{run.analysis.questions.map((question) => <fieldset key={question.id}><legend>{question.text}</legend>{question.options.map((option) => <label key={option.value}><input type="radio" name={`question-${question.id}`} value={option.value}/>{option.label}</label>)}</fieldset>)}</div>}
+                  <SaveStatusButton className="button primary" idleLabel="Подтвердить историю" pendingLabel="Сохраняю…"/>
+                </form>}
+                {run.analysis.currentPositionCandidate && <form action={setStudentCoursePosition} className={styles.positionCandidate}>
+                  <input type="hidden" name="studentId" value={studentId}/><input type="hidden" name="enrollmentId" value={course.enrollmentId}/><input type="hidden" name="stage" value={run.analysis.currentPositionCandidate.stage}/><input type="hidden" name="lesson" value={run.analysis.currentPositionCandidate.lesson || ''}/><input type="hidden" name="note" value={course.positionNote || ''}/>{course.completedBeforeTracking && <input type="hidden" name="completedBeforeTracking" value="on"/>}
+                  <span>Предложенная позиция: <strong>{run.analysis.currentPositionCandidate.stage}{run.analysis.currentPositionCandidate.lesson ? ` / ${run.analysis.currentPositionCandidate.lesson}` : ''}</strong></span><button className={`button ${styles.secondaryButton}`} type="submit">Использовать как фактическую позицию</button>
+                </form>}
+              </div>}
+
+              <form action={generateHistoryBootstrapAction} className={styles.bootstrapAction}>
+                <input type="hidden" name="studentId" value={studentId}/><input type="hidden" name="enrollmentId" value={course.enrollmentId}/>
+                <SaveStatusButton className={`button ${styles.secondaryButton}`} idleLabel={confirmed.length ? 'Проверить историю ещё раз' : 'Восстановить историю'} pendingLabel="Анализирую…"/>
+              </form>
+            </section>;
+          })()}
         </article>)}</div> : <p className="muted small">Курс пока не настроен.</p>}
       </section>
 

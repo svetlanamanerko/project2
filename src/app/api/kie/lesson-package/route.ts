@@ -214,6 +214,7 @@ export async function POST(request: Request) {
     `Срочное: ${urgent.length ? urgent.map((x) => x.description).join(' | ') : 'нет'}`,
     `Навыки: ${skills.length ? skills.map((x) => `${x.skill} ${x.level}/100${x.note ? ` — ${x.note}` : ''}`).join('; ') : 'пока не заполнены'}`,
     `Отобранный lesson context (Course Map → Progress → Drive/Navigator): ${JSON.stringify(lessonContext)}`,
+    `HISTORICAL COVERAGE: ${JSON.stringify(lessonContext.historicalCoverage)}. Это темы и материалы, которые встречались до начала журнала, а не доказательство mastery. Избегай случайного дословного повторения старых материалов. Повторяй тему, если current student context, recycling или история этого требуют.`,
   ].join('\n');
 
   let communicativeWarmup = '';
