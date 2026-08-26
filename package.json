@@ -8,6 +8,7 @@
     "test:semantics": "node --experimental-strip-types scripts/check-lesson-semantics.mjs",
     "test:learning-context": "node --experimental-strip-types scripts/check-learning-context.mjs",
     "test:schedule": "node --experimental-strip-types scripts/check-schedule.mjs",
+    "test:navigator": "node --experimental-strip-types scripts/check-navigator.mjs",
     "start": "next start -H 0.0.0.0 -p ${PORT:-3000}",
     "migrate": "node scripts/migrate.mjs"
   },

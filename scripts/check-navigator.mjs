@@ -1,0 +1,26 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import { buildOgeSearchParams, currentPositionSearchValue, filterUnusedNavigatorTasks, navigatorConnectionLabel, navigatorUsageMap, normalizeOgeSearchMetadata } from '../src/lib/navigator-utils.ts';
+
+const params=buildOgeSearchParams({q:'Travelling',section:'Grammar',kes:'2.4',hasMedia:true,page:2,pageSize:30});
+assert.equal(params.get('q'),'Travelling');assert.equal(params.get('section'),'Grammar');assert.equal(params.get('kes'),'2.4');assert.equal(params.get('hasMedia'),'true');assert.equal(params.get('page'),'2');assert.equal(params.get('pageSize'),'30');
+const metadata=normalizeOgeSearchMetadata({items:[{qid:'A'}],total:1735,page:2,pageSize:20,pages:87},{page:1,pageSize:20});
+assert.deepEqual(metadata,{items:[{qid:'A'}],total:1735,page:2,pageSize:20,pages:87});
+const usageA=navigatorUsageMap([{qid:'SAME',studentId:'A'}]);const usageB=navigatorUsageMap([{qid:'OTHER',studentId:'B'}]);
+assert.equal(usageA.has('SAME'),true);assert.equal(usageB.has('SAME'),false);
+assert.deepEqual(filterUnusedNavigatorTasks([{qid:'SAME'},{qid:'NEW'}],usageA.keys()),[{qid:'NEW'}]);
+assert.equal(currentPositionSearchValue({stage:'Block 3',lesson:'Travelling',intent:{}}),'Travelling');
+assert.equal(currentPositionSearchValue({stage:'Block 3',lesson:null,intent:{topic:'Travel'}}),'Travel');
+assert.equal(navigatorConnectionLabel(true,true),'● Navigator подключён');
+assert.equal(navigatorConnectionLabel(true,false),'⚠ Navigator временно недоступен');
+assert.equal(navigatorConnectionLabel(false,false),'⚠ Интеграция не настроена');
+const sidebar=fs.readFileSync(new URL('../src/components/Sidebar.tsx',import.meta.url),'utf8');
+const page=fs.readFileSync(new URL('../src/app/(private)/navigator/page.tsx',import.meta.url),'utf8');
+const detail=fs.readFileSync(new URL('../src/app/(private)/navigator/[qid]/page.tsx',import.meta.url),'utf8');
+const client=fs.readFileSync(new URL('../src/lib/oge-navigator-client.ts',import.meta.url),'utf8');
+assert.match(sidebar,/ФИПИ Navigator/);assert.match(sidebar,/href: '\/navigator'/);
+assert.match(page,/navigatorConnectionLabel/);assert.match(page,/Navigator временно не отвечает/);assert.match(page,/Только неиспользованные задания/);
+assert.match(detail,/getOgeTask\(qid\)/);assert.match(detail,/Назад к поиску/);
+assert.match(client,/maxPageSize: 10/);assert.match(client,/slice\(0, 10\)/);
+assert.match(client,/pageSize: 1/);assert.doesNotMatch(client,/getOgeNavigatorInventory[\s\S]*pageSize: 50/);
+console.log('Navigator regression checks passed.');
