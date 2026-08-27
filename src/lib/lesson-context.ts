@@ -2,6 +2,7 @@ import 'server-only';
 import { db } from '@/lib/db';
 import { getStudentLearningContext } from '@/lib/student-learning-context';
 import { getRelevantCourseMaterials } from '@/lib/relevant-course-materials';
+import { getCoursePlanningGuidance } from '@/lib/course-planning-guidance';
 import { getOgeCandidatesForStudent } from '@/lib/oge-navigator-client';
 import { isDiagnosticIntent, resolveCurrentAndNext } from '@/lib/learning-context-utils';
 
@@ -71,6 +72,17 @@ export async function buildLessonContext(studentId: string, options?: { enrollme
     () => driveController.abort(),
   );
 
+  const planningController = new AbortController();
+  const planningPromise = withTimeout(
+    getCoursePlanningGuidance({
+      courseFolderId: course.driveFolderId,
+      lessonIntent,
+      signal: planningController.signal,
+    }),
+    'Course planning baseline',
+    () => planningController.abort(),
+  );
+
   const navigatorConfigured = Boolean(process.env.OGE_NAVIGATOR_BASE_URL);
   const isOge = /\b(oge|огэ)\b/i.test(course.title);
   const navigatorPromise = withTimeout(
@@ -80,12 +92,31 @@ export async function buildLessonContext(studentId: string, options?: { enrollme
     'OGE Navigator',
   );
 
-  const [driveResult, navigatorResult] = await Promise.allSettled([drivePromise, navigatorPromise]);
+  const [driveResult, planningResult, navigatorResult] = await Promise.allSettled([
+    drivePromise,
+    planningPromise,
+    navigatorPromise,
+  ]);
 
   const driveMaterials = driveResult.status === 'fulfilled' ? driveResult.value : [];
   const driveAvailable = driveResult.status === 'fulfilled';
   if (driveResult.status === 'rejected') {
     console.error('[lesson-context] Google Drive unavailable:', errorMessage(driveResult.reason));
+  }
+
+  const planningGuidance = planningResult.status === 'fulfilled'
+    ? planningResult.value
+    : {
+      available: false,
+      module: null,
+      hierarchy: [],
+      federalBaseline: null,
+      assessmentMap: null,
+      coursePriorityMap: null,
+      moduleBrief: null,
+    };
+  if (planningResult.status === 'rejected') {
+    console.error('[lesson-context] Course planning baseline unavailable:', errorMessage(planningResult.reason));
   }
 
   const navigator = navigatorResult.status === 'fulfilled'
@@ -99,6 +130,8 @@ export async function buildLessonContext(studentId: string, options?: { enrollme
     studentProgress: { student: studentProgress.student, course, currentPosition: course.currentPosition },
     coursePlan,
     lessonIntent,
+    planningGuidance,
+    planningStatus: { available: planningResult.status === 'fulfilled' && planningGuidance.available },
     driveMaterials,
     driveStatus: { available: driveAvailable },
     navigatorCandidates: navigator.items,
