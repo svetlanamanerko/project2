@@ -25,7 +25,9 @@ function stringsFromIntent(intent: Record<string, unknown>) {
 
 export function moduleNumberFromIntent(intent: Record<string, unknown>): number | null {
   for (const value of stringsFromIntent(intent)) {
-    const explicit = value.match(/\bmodule\s*0?(\d{1,2})\b/i);
+    // School/textbook positions are often written as "Module 1a" / "module 2b".
+    // The letter is a lesson suffix, not part of the module number.
+    const explicit = value.match(/\bmodule\s*0?(\d{1,2})(?:[a-zа-я])?\b/i);
     if (explicit) return Number(explicit[1]);
     const compact = value.match(/(?:^|\b)m\s*0?(\d{1,2})(?:\.|\b)/i);
     if (compact) return Number(compact[1]);
@@ -35,8 +37,11 @@ export function moduleNumberFromIntent(intent: Record<string, unknown>): number 
 
 export function moduleBriefScore(name: string, moduleNumber: number | null) {
   if (planningDocumentKind(name) !== 'module-brief') return -1;
-  if (moduleNumber == null) return 1;
   const value = name.toLocaleUpperCase('ru-RU');
+  // A template is documentation for creating briefs, never live planning guidance.
+  if (value.includes('TEMPLATE') || value.includes('ШАБЛОН')) return 0;
+  // Without a resolved current module it is safer to use no Module Brief than a wrong one.
+  if (moduleNumber == null) return 0;
   if (new RegExp(`\\bMODULE\\s*0?${moduleNumber}\\b`, 'i').test(value)) return 100;
   if (new RegExp(`(?:^|\\b)M\\s*0?${moduleNumber}(?:\\.|\\b)`, 'i').test(value)) return 80;
   return 0;
