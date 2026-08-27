@@ -75,7 +75,8 @@ const pageSource = fs.readFileSync(new URL('../src/app/(private)/students/[stude
 assert.match(pageSource, /action=\{generateHistoryBootstrapAction\}/);
 assert.match(pageSource, /action=\{confirmHistoryBootstrapAction\}/);
 assert.match(pageSource, /Старые материалы ещё не анализировались/);
-assert.match(pageSource, /KIE\/Claude временно не ответил\. История не изменена/);
+assert.match(pageSource, /AI-анализ временно недоступен\. История не изменена/);
+assert.doesNotMatch(pageSource, /KIE\/Claude временно не ответил/);
 assert.doesNotMatch(pageSource, /getCourseHistoricalMaterialCandidates|generateKieText/);
 
 const learningSource = fs.readFileSync(new URL('../src/lib/student-learning-context.ts', import.meta.url), 'utf8');
@@ -85,6 +86,18 @@ assert.doesNotMatch(learningSource.match(/historicalCoverage[\s\S]*?usedQids/)?.
 const contextSource = fs.readFileSync(new URL('../src/lib/lesson-context.ts', import.meta.url), 'utf8');
 assert.match(contextSource, /usedMaterialsByEnrollment\[course\.enrollmentId\]/);
 assert.match(contextSource, /historicalCoverage: studentProgress\.historicalCoverage\.filter/);
+
+const adviceSource = fs.readFileSync(new URL('../src/lib/student-advice.ts', import.meta.url), 'utf8');
+assert.match(adviceSource, /FROM historical_coverage h/);
+assert.match(adviceSource, /h\.status='confirmed'/);
+assert.match(adviceSource, /LEFT JOIN student_course_positions p/);
+assert.match(adviceSource, /ПОДТВЕРЖДЕННАЯ ИСТОРИЯ ДО МАСТЕРСКОЙ/);
+assert.match(adviceSource, /Это НЕ означает, что материал освоен/);
+assert.match(adviceSource, /если данных для вывода недостаточно, формулируй действие как «проверить \/ диагностировать»/);
+assert.match(adviceSource, /recycleItems добавляй ТОЛЬКО когда есть прямое основание/);
+assert.match(adviceSource, /ФАКТ → ВЫВОД → ДЕЙСТВИЕ/);
+assert.match(adviceSource, /route: 'analysis'/);
+assert.doesNotMatch(adviceSource, /h\.status='rejected'/);
 
 const migration = fs.readFileSync(new URL('../db/migrations/007_history_bootstrap.sql', import.meta.url), 'utf8');
 assert.match(migration, /UNIQUE\(enrollment_id, fingerprint\)/);

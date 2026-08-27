@@ -86,20 +86,26 @@ export async function generateStudentLearningAdvice(studentId: string): Promise<
   const student = students[0];
   if (!student) throw new Error('Ученик не найден');
 
-  const [courses, observations, recentLessons, recycling, skills, planItems] = await Promise.all([
+  const [courses, observations, recentLessons, recycling, skills, planItems, historicalCoverage] = await Promise.all([
     sql<Array<{
       enrollmentId: string;
       courseId: string;
       course: string;
       driveFolderId: string | null;
+      currentStage: string | null;
+      currentLesson: string | null;
+      positionNote: string | null;
       module: string | null;
       topic: string | null;
       note: string | null;
     }>>`
       SELECT e.id as "enrollmentId", c.id as "courseId", c.title as course,
-             c.drive_folder_id as "driveFolderId", sp.module, sp.topic, sp.note
+             c.drive_folder_id as "driveFolderId",
+             p.stage_label as "currentStage", p.lesson_label as "currentLesson", p.note as "positionNote",
+             sp.module, sp.topic, sp.note
       FROM enrollments e
       JOIN courses c ON c.id=e.course_id AND c.active=true
+      LEFT JOIN student_course_positions p ON p.enrollment_id=e.id
       LEFT JOIN school_positions sp ON sp.enrollment_id=e.id
       WHERE e.student_id=${studentId} AND e.active=true
       ORDER BY c.title
@@ -151,6 +157,23 @@ export async function generateStudentLearningAdvice(studentId: string): Promise<
       ORDER BY p.created_at ASC
       LIMIT 12
     `,
+    sql<Array<{
+      course: string;
+      stage: string | null;
+      lesson: string | null;
+      topic: string | null;
+      summary: string;
+      confidence: 'high' | 'medium' | 'low';
+    }>>`
+      SELECT c.title as course, h.stage_label as stage, h.lesson_label as lesson, h.topic,
+             h.coverage_summary as summary, h.confidence
+      FROM historical_coverage h
+      JOIN enrollments e ON e.id=h.enrollment_id
+      JOIN courses c ON c.id=e.course_id
+      WHERE e.student_id=${studentId} AND e.active=true AND h.status='confirmed'
+      ORDER BY h.updated_at DESC
+      LIMIT 12
+    `,
   ]);
 
   let driveContext = 'Источники Google Drive не прочитаны.';
@@ -173,7 +196,15 @@ export async function generateStudentLearningAdvice(studentId: string): Promise<
   }
 
   const courseContext = courses.length
-    ? courses.map((course) => `${course.course} [enrollment ${course.enrollmentId}] — модуль: ${course.module || 'не указан'}; тема: ${course.topic || 'не указана'}; сейчас важно: ${course.note || 'нет'}`).join('\n')
+    ? courses.map((course) => {
+      const factualPosition = course.currentStage
+        ? `${course.currentStage}${course.currentLesson ? ` / ${course.currentLesson}` : ''}`
+        : 'не указана';
+      const schoolTopic = course.module || course.topic
+        ? `${course.module || ''}${course.module && course.topic ? ' · ' : ''}${course.topic || ''}`
+        : 'не указана';
+      return `${course.course} [enrollment ${course.enrollmentId}] — фактическая позиция: ${factualPosition}; тема школы: ${schoolTopic}; комментарий к позиции: ${course.positionNote || 'нет'}; сейчас важно: ${course.note || 'нет'}`;
+    }).join('\n')
     : 'Активных курсов нет.';
   const observationContext = observations.length
     ? observations.map((item) => `${item.observedOn}${item.course ? ` · ${item.course}` : ''}: получается — ${item.strengths || 'не отмечено'}; трудно — ${item.difficulties || 'не отмечено'}; повторить — ${item.recycle || 'не отмечено'}; комментарий — ${item.comment || 'нет'}`).join('\n')
@@ -184,8 +215,11 @@ export async function generateStudentLearningAdvice(studentId: string): Promise<
   const recyclingContext = recycling.length ? recycling.map((item) => `${item.course}: ${item.label} (${item.category})`).join('; ') : 'Очередь пустая.';
   const skillsContext = skills.length ? skills.map((item) => `${item.course}: ${item.skill} ${item.level}/100${item.note ? ` — ${item.note}` : ''}`).join('; ') : 'Профиль навыков пока не заполнен.';
   const planContext = planItems.length ? planItems.map((item) => `${item.course}: ${item.label}`).join('; ') : 'Активных пунктов плана пока нет.';
+  const historicalContext = historicalCoverage.length
+    ? historicalCoverage.map((item) => `${item.course}: ${item.stage || item.topic || 'исторический материал'}${item.lesson ? ` / ${item.lesson}` : ''}${item.topic && item.stage ? ` · ${item.topic}` : ''} — ${item.summary.slice(0, 500)} [достоверность связи с материалом: ${item.confidence}]`).join('\n')
+    : 'Подтверждённой преподавателем истории до Мастерской пока нет.';
 
-  const prompt = `Ты методист личной «Мастерской уроков» преподавателя английского языка. Проанализируй конкретного ученика и предложи практический маршрут обучения.\n\nУЧЕНИК:\n${student.displayName}${student.schoolGrade ? `, ${student.schoolGrade} класс` : ''}\n\nПОСТОЯННЫЙ КОНТЕКСТ / ИСТОРИЯ:\n${student.notes || 'Пока не заполнено.'}\n\nАКТИВНЫЕ КУРСЫ И ТЕКУЩАЯ ПОЗИЦИЯ:\n${courseContext}\n\nНАБЛЮДЕНИЯ ПРЕПОДАВАТЕЛЯ ПО ХОДУ ОБУЧЕНИЯ:\n${observationContext}\n\nПОСЛЕДНИЕ УРОКИ:\n${lessonContext}\n\nУЖЕ СТОИТ В ПОВТОРЕНИИ:\n${recyclingContext}\n\nПРОФИЛЬ НАВЫКОВ:\n${skillsContext}\n\nУЖЕ В ПЛАНЕ ОБУЧЕНИЯ:\n${planContext}\n\nИСТОЧНИКИ КУРСОВ В GOOGLE DRIVE:\n${driveContext}\n\nВАЖНО ПРО ИСТОЧНИКИ:\nЗдесь перечислены только имена папок/файлов верхнего уровня. Не придумывай их содержание. Используй названия только как ориентир, что у преподавателя есть такой источник.\n\nПРАВИЛА:\n- опирайся на реальные наблюдения и историю ученика;\n- не ставь диагнозы и не делай выводы о способностях ученика без данных;\n- отличай текущую школьную помощь от долгосрочной цели курса;\n- рекомендации должны помогать выбрать следующие 2–4 урока, а не быть общей теорией;\n- учитывай уже активные пункты плана и повторения, не дублируй их без причины;\n- для экзаменационного курса учитывай необходимость баланса формата экзамена и реального языка;\n- язык ответа — русский;\n- верни ТОЛЬКО JSON без markdown.\n\nФОРМАТ JSON:\n{\n  "summary": "2-4 предложения: где ученик сейчас и общая стратегия",\n  "priorities": ["3-5 конкретных приоритетов на ближайшие уроки"],\n  "nextLesson": ["что разумно включить в ближайший урок"],\n  "watch": ["на что преподавателю наблюдать и что проверять"],\n  "planItems": ["короткие пункты, которые можно добавить в план обучения"],\n  "recycleItems": ["короткие языковые пункты, которые стоит поставить в повторение"]\n}`;
+  const prompt = `Ты методист личной «Мастерской уроков» преподавателя английского языка. Проанализируй конкретного ученика и предложи практический маршрут обучения.\n\nУЧЕНИК:\n${student.displayName}${student.schoolGrade ? `, ${student.schoolGrade} класс` : ''}\n\nПОСТОЯННЫЙ КОНТЕКСТ / ИСТОРИЯ:\n${student.notes || 'Пока не заполнено.'}\n\nАКТИВНЫЕ КУРСЫ И ТЕКУЩАЯ ПОЗИЦИЯ:\n${courseContext}\n\nПОДТВЕРЖДЕННАЯ ИСТОРИЯ ДО МАСТЕРСКОЙ:\n${historicalContext}\n\nВАЖНО ПРО ИСТОРИЮ ДО МАСТЕРСКОЙ:\nПодтверждённая запись означает только, что ученик с большой вероятностью встречал или проходил этот материал. Это НЕ означает, что материал освоен, закреплён или может быть автоматически засчитан как сильная сторона. Confidence показывает качество связи материала с учеником, а не уровень владения.\n\nНАБЛЮДЕНИЯ ПРЕПОДАВАТЕЛЯ ПО ХОДУ ОБУЧЕНИЯ:\n${observationContext}\n\nПОСЛЕДНИЕ УРОКИ:\n${lessonContext}\n\nУЖЕ СТОИТ В ПОВТОРЕНИИ:\n${recyclingContext}\n\nПРОФИЛЬ НАВЫКОВ:\n${skillsContext}\n\nУЖЕ В ПЛАНЕ ОБУЧЕНИЯ:\n${planContext}\n\nИСТОЧНИКИ КУРСОВ В GOOGLE DRIVE:\n${driveContext}\n\nВАЖНО ПРО ИСТОЧНИКИ:\nЗдесь перечислены только имена папок/файлов верхнего уровня. Не придумывай их содержание. Используй названия только как ориентир, что у преподавателя есть такой источник.\n\nПРАВИЛА:\n- опирайся только на факты из переданного контекста; не придумывай грамматику, лексику, ошибки, слабости или темы только потому, что они типичны для класса или учебника;\n- если данных для вывода недостаточно, формулируй действие как «проверить / диагностировать», а не как «повторить / отработать»;\n- каждый приоритет и действие должны быть конкретно связаны с фактом: текущей позицией, подтверждённой историей, наблюдением, профилем навыка, активным повторением или последним уроком;\n- подтверждённая историческая встреча с материалом сама по себе не является основанием считать его освоенным или ставить его в повторение;\n- recycleItems добавляй ТОЛЬКО когда есть прямое основание: наблюдение преподавателя о трудности/повторении, уже зафиксированный слабый навык, незакрытый результат урока или явная очередь повторения; если такого основания нет — верни пустой массив;\n- если исторический материал стоит проверить, но трудность не доказана, помести это в watch или nextLesson как короткую диагностику, а не в recycleItems;\n- не ставь диагнозы и не делай выводы о способностях ученика без данных;\n- отличай фактическую позицию по курсу, текущую школьную тему и долгосрочную цель;\n- рекомендации должны помогать выбрать следующие 2–4 урока, а не быть общей теорией;\n- избегай универсальных формулировок вроде «расширять словарный запас», «укреплять грамматику», «развивать говорение» без конкретного основания и конкретного действия;\n- учитывай уже активные пункты плана и повторения, не дублируй их без причины;\n- для экзаменационного курса упоминай экзаменационную траекторию только если она действительно следует из названия/контекста курса;\n- мысль строится по логике ФАКТ → ВЫВОД → ДЕЙСТВИЕ;\n- язык ответа — русский;\n- верни ТОЛЬКО JSON без markdown.\n\nФОРМАТ JSON:\n{\n  "summary": "2-4 предложения: конкретные факты о текущем состоянии, что из них следует и общая стратегия",\n  "priorities": ["3-5 конкретных приоритетов на ближайшие уроки, каждый с понятным основанием"],\n  "nextLesson": ["конкретные действия ближайшего урока; если данных мало — короткая диагностика конкретного пункта"],\n  "watch": ["что именно наблюдать или проверять, если навык ещё не подтверждён данными"],\n  "planItems": ["короткие обоснованные пункты, которые можно добавить в план обучения"],\n  "recycleItems": ["только доказанные языковые трудности для повторения; иначе пустой массив"]\n}`;
 
   const result = await generateKieText({
     route: 'analysis',

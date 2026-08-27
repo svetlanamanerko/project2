@@ -20,5 +20,7 @@ jobs:
           cache-dependency-path: package.json
       - name: Установить зависимости
         run: npm install --no-audit --no-fund
+      - name: Проверить History Bootstrap и рекомендации
+        run: npm run test:history-bootstrap
       - name: Проверить production build
         run: npm run build

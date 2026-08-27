@@ -164,7 +164,7 @@ export default async function StudentPage({ params, searchParams }: PageProps<'/
             return <section className={styles.historyBootstrap} id={`history-${course.enrollmentId}`}>
               <div className={styles.historyBootstrapHead}><div><ArchiveRestore size={17}/><div><strong>История до Мастерской</strong><span>{course.title}</span></div></div></div>
               {query.history === 'drive-error' && <div className="notice warning">Не удалось прочитать папку курса. История не изменена.</div>}
-              {query.history === 'kie-unavailable' && <div className="notice warning">KIE/Claude временно не ответил. История не изменена. Попробуйте повторить позже.</div>}
+              {query.history === 'kie-unavailable' && <div className="notice warning">AI-анализ временно недоступен. История не изменена. Попробуйте повторить позже.</div>}
               {query.history === 'ai-error' && <div className="notice warning">Не удалось проанализировать старые материалы. История не изменена.</div>}
               {query.history === 'confirmed' && <div className="notice success">История подтверждена преподавателем.</div>}
               {confirmed.length > 0 ? <>
@@ -288,7 +288,7 @@ export default async function StudentPage({ params, searchParams }: PageProps<'/
       </section>
 
       <section className={`panel ${styles.wide} ${styles.advicePanel}`} id="recommendations">
-        <div className="panel-title"><div><h2><BrainCircuit size={19}/>Рекомендации по обучению</h2><p className="muted small">AI учитывает контекст ученика, твои наблюдения, текущие курсы, прошлые уроки, план и очередь повторения.</p></div></div>
+        <div className="panel-title"><div><h2><BrainCircuit size={19}/>Рекомендации по обучению</h2><p className="muted small">AI учитывает контекст ученика, подтверждённую историю до Мастерской, фактическую позицию, твои наблюдения, прошлые уроки, план и очередь повторения.</p></div></div>
         {query.advice === 'ready' && <div className="notice success">Новый анализ ученика готов.</div>}
         {query.advice === 'error' && <div className="notice warning">Не удалось получить рекомендации. Данные ученика сохранены — попробуй анализ ещё раз позже.</div>}
         <form action={generateStudentAdviceAction} className={styles.adviceAction}><input type="hidden" name="studentId" value={studentId}/><AdviceSubmitButton/></form>
