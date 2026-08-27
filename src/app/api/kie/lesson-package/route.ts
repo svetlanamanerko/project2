@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { hasSession } from '@/lib/auth';
 import { db, dbConfigured } from '@/lib/db';
-import { prepareLessonSource } from '@/lib/lesson-source';
+import { prepareLessonSourceWithPlanning } from '@/lib/lesson-source-planning';
 import { buildLessonDocx } from '@/lib/lesson-docx';
 import { generatedDocxMimeType, uploadLessonPackageFiles } from '@/lib/generated-materials-drive';
 import { buildLessonContext } from '@/lib/lesson-context';
@@ -182,14 +182,14 @@ export async function POST(request: Request) {
 
   let source;
   try {
-    source = await prepareLessonSource({
+    source = await prepareLessonSourceWithPlanning({
       courseTitle: context.course,
       courseFolderId: context.courseFolderId,
       courseProfile: context.courseProfile,
       module: context.module,
       topic: context.topic,
       note: context.note,
-    }, key);
+    }, key, lessonContext.planningGuidance.moduleBrief?.text);
   } catch (error) {
     console.error('[lesson-package] Не удалось открыть источник:', error);
     source = null;
@@ -213,6 +213,7 @@ export async function POST(request: Request) {
     `Повторение: ${recycling.length ? recycling.map((x) => `${x.label} (${x.category})`).join('; ') : 'нет'}`,
     `Срочное: ${urgent.length ? urgent.map((x) => x.description).join(' | ') : 'нет'}`,
     `Навыки: ${skills.length ? skills.map((x) => `${x.skill} ${x.level}/100${x.note ? ` — ${x.note}` : ''}`).join('; ') : 'пока не заполнены'}`,
+    `COURSE BASELINE / MODULE BRIEF: ${JSON.stringify(lessonContext.planningGuidance)}`,
     `Отобранный lesson context (Course Map → Progress → Drive/Navigator): ${JSON.stringify(lessonContext)}`,
     `HISTORICAL COVERAGE: ${JSON.stringify(lessonContext.historicalCoverage)}. Это темы и материалы, которые встречались до начала журнала, а не доказательство mastery. Избегай случайного дословного повторения старых материалов. Повторяй тему, если current student context, recycling или история этого требуют.`,
   ].join('\n');
@@ -250,6 +251,7 @@ ${contextText}
 
 МЕТОДИКА:
 - учебник — основа урока; внимательно изучи приложенные страницы;
+- Module Brief и Course Baseline определяют цель, приоритет и объём урока; реальный PDF определяет фактическое содержание страницы;
 - не выдумывай содержание страниц и номера упражнений;
 - не перепечатывай длинные тексты учебника: создавай оригинальную дополнительную практику по реально видимой лексике/грамматике/функциям;
 - CORE реально заполняет 60 минут, RESERVE — большой запас;

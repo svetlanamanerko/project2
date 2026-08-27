@@ -2,7 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { hasSession } from '@/lib/auth';
 import { db, dbConfigured } from '@/lib/db';
-import { prepareLessonSource, type PreparedLessonSource } from '@/lib/lesson-source';
+import { type PreparedLessonSource } from '@/lib/lesson-source';
+import { prepareLessonSourceWithPlanning } from '@/lib/lesson-source-planning';
 import { buildLessonContext } from '@/lib/lesson-context';
 import { generateKieText, KieRequestError, type KieInputPart } from '@/lib/ai-routing';
 import { courseMethodologyPrompt } from '@/lib/course-profile';
@@ -108,14 +109,14 @@ export async function POST(request: Request) {
 
   let preparedSource: PreparedLessonSource | null = null;
   try {
-    preparedSource = await prepareLessonSource({
+    preparedSource = await prepareLessonSourceWithPlanning({
       courseTitle: context.course,
       courseFolderId: context.courseFolderId,
       courseProfile: context.courseProfile,
       module: context.module,
       topic: context.topic,
       note: context.note,
-    }, key);
+    }, key, lessonContext.planningGuidance.moduleBrief?.text);
   } catch (error) {
     console.error('[lesson-source] Не удалось подготовить страницы учебника:', error);
   }
@@ -147,7 +148,7 @@ export async function POST(request: Request) {
     ? `К сообщению приложен PDF-фрагмент реального учебника (${preparedSource.label}). Изучи именно эти страницы. Можно ссылаться на реально видимые упражнения, тексты, лексику и грамматику, но ничего не додумывай за пределами приложенного фрагмента.`
     : 'PDF-фрагмент учебника не приложен. Не выдумывай содержание страниц, номера упражнений, тексты или лексику; если они нужны, укажи, что нужен источник.';
 
-  const prompt = `Ты методист личной Мастерской уроков преподавателя английского. Составь КОРОТКИЙ ПЛАН ПОДГОТОВКИ к индивидуальному уроку на 60 минут. Это ещё не worksheet.\n\nДАННЫЕ ИЗ БАЗЫ:\n${sourceContext}\n\nРАБОТА С ИСТОЧНИКОМ:\n${sourceRule}\n\nИЕРАРХИЯ ПЛАНИРОВАНИЯ:\n- Federal Baseline задаёт обязательные результаты курса и не может быть отменён красивой/неудобной страницей учебника;\n- Assessment Map показывает, каким evidence проверять результат;\n- Course Priority Map задаёт CORE / IMPORTANT / HOME / SKIP решения и реальный часовой бюджет;\n- Module Brief, если найден для текущего модуля, является главным модульным decision layer: планируй backward от его end-of-module outcomes;\n- Course Map определяет фактическое место ученика в маршруте, но сам по себе не делает каждую следующую страницу CORE;\n- реальный фрагмент учебника определяет фактическое содержание страницы: baseline никогда не даёт права придумывать текст/упражнения, которых нет в источнике;\n- данные конкретного ученика определяют объём поддержки, повторения и темп. Контакт с материалом в истории не равен mastery.\n\nЖЁСТКИЕ ПРАВИЛА:\n- опирайся на данные базы, историю ученика, наблюдения преподавателя и приложенный источник, если он есть;\n- если Module Brief содержит конкретный slot/маршрут для текущего этапа, соотнеси урок именно с ним и НЕ пытайся закрыть весь модуль за один урок;\n- если Course Priority Map/Module Brief помечает материал SHORTEN/HOME/OPTIONAL/SKIP, не растягивай его на полный live-блок без доказанной индивидуальной причины;\n- если обязательный outcome ещё не доказан, не выбрасывай его только потому, что страница кажется дополнительной;\n- НЕ выдумывай упражнения, тексты, слова, правила или задания, которых нет в источнике/данных;\n- активные пункты плана обучения должны влиять на приоритеты урока, если они релевантны текущей школьной теме;\n- учитывай школьный темп: не предлагай надолго задерживаться на одном материале;\n- обязательно предусмотрите вывод материала в речь;\n- язык ответа — русский, компактно, без длинных объяснений.\n\nФОРМАТ:\nИсточник: ${preparedSource ? preparedSource.label : 'не найден'}\nМетодическая опора: ${lessonContext.planningGuidance.moduleBrief?.title || lessonContext.planningGuidance.coursePriorityMap?.title || 'Course Baseline не найден'}\nФокус урока: ...\nЦель: ...\nCORE 60 минут:\n1. ...\n2. ...\n3. ...\n4. ...\nSpeaking transfer: ...\nЧто повторить: ...\nHOME / SHORTEN: ...\nRESERVE: ...\nНужен дополнительный источник: ...`;
+  const prompt = `Ты методист личной Мастерской уроков преподавателя английского. Составь КОРОТКИЙ ПЛАН ПОДГОТОВКИ к индивидуальному уроку на 60 минут. Это ещё не worksheet.\n\nДАННЫЕ ИЗ БАЗЫ:\n${sourceContext}\n\nРАБОТА С ИСТОЧНИКОМ:\n${sourceRule}\n\nИЕРАРХИЯ ПЛАНИРОВАНИЯ:\n- Federal Baseline задаёт обязательные результаты курса и не может быть отменён красивой/неудобной страницей учебника;\n- Assessment Map показывает, каким evidence проверять результат;\n- Course Priority Map задаёт CORE / IMPORTANT / HOME / SKIP решения и реальный часовой бюджет;\n- Module Brief, если найден для текущего модуля, является главным модульным decision layer: планируй backward от его end-of-module outcomes;\n- Course Map определяет фактическое место ученика в маршруте, но сам по себе не делает каждую следующую страницу CORE;\n- реальный фрагмент учебника определяет фактическое содержание страницы: baseline никогда не даёт права придумывать текст/упражнения, которых нет в источнике;\n- данные конкретного ученика определяют объём поддержки, повторения и темп. Контакт с материалом в истории не равен mastery.\n\nЖЁСТКИЕ ПРАВИЛА:\n- опирайся на данные базы, историю ученика, наблюдения преподавателя и приложенный источник, если он есть;\n- если Module Brief содержит конкретный slot/маршрут для текущего этапа, соотнеси урок именно с ним и НЕ пытайся закрыть весь модуль за один урок;\n- если Course Priority Map/Module Brief помечает материал SHORTEN/HOME/OPTIONAL/SKIP, не растягивай его на полный live-блок без доказанной индивидуальной причины;\n- если обязательный outcome ещё не доказан, не выбрасывай его только потому, что страница кажется дополнительной;\n- НЕ выдумывай упражнения, тексты, слова, правила или задания, которых нет в источнике/данных;\n- активные пункты плана обучения должны влиять на приоритеты урока, если они релевантны текущей школьной теме;\n- учитывай школьный темп: не предлагай надолго задерживаться на одном материале;\n- обязательно предусмотрите вывод материала в речь;\n- каждый заголовок, каждый пункт CORE и каждый блок результата пиши С НОВОЙ СТРОКИ; не превращай ответ в один длинный абзац;\n- язык ответа — русский, компактно, без длинных объяснений.\n\nФОРМАТ:\nИсточник: ${preparedSource ? preparedSource.label : 'не найден'}\nМетодическая опора: ${lessonContext.planningGuidance.moduleBrief?.title || lessonContext.planningGuidance.coursePriorityMap?.title || 'Course Baseline не найден'}\nФокус урока: ...\nЦель: ...\nCORE 60 минут:\n1. ...\n2. ...\n3. ...\n4. ...\nSpeaking transfer: ...\nЧто повторить: ...\nHOME / SHORTEN: ...\nRESERVE: ...\nНужен дополнительный источник: ...`;
 
   try {
     const inputContent: KieInputPart[] = [
