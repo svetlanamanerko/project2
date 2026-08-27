@@ -1,6 +1,7 @@
 import 'server-only';
 import { db } from '@/lib/db';
 import { refreshGoogleAccessToken } from '@/lib/google-drive';
+import { isPlanningGuidancePath } from '@/lib/course-planning-guidance-utils';
 import { materialMatchScore, prioritizeMaterialBranches, rankByIntent } from '@/lib/learning-context-utils';
 
 type DriveCandidate = {
@@ -88,6 +89,7 @@ export async function getRelevantCourseMaterials({
 
     for (const item of await listFolder(token, folder.id, signal, budget)) {
       const path = [folder.path, item.name].filter(Boolean).join(' / ');
+      if (isPlanningGuidancePath(path)) continue;
       const score = materialMatchScore(path, lessonIntent);
       if (item.mimeType === FOLDER) pending.push({ id: item.id, path, score });
       else if (found.size < MAX_DRIVE_FILES) {
