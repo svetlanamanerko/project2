@@ -57,6 +57,13 @@ function clipped(text: string, max: number) {
   return value.length <= max ? value : `${value.slice(0, max).trimEnd()}\n[…сокращено…]`;
 }
 
+function before(text: string, stop: RegExp, max: number) {
+  const value = normalizeText(text);
+  const match = stop.exec(value);
+  const end = match?.index != null ? match.index : Math.min(value.length, max);
+  return clipped(value.slice(0, Math.min(end, max)), max);
+}
+
 function section(text: string, start: RegExp, stop: RegExp, max: number) {
   const value = normalizeText(text);
   const match = start.exec(value);
@@ -86,7 +93,7 @@ export function compactPlanningText(kind: PlanningDocumentKind, text: string, mo
   if (kind === 'module-brief') return clipped(value, 11_000);
 
   if (kind === 'course-priority-map') {
-    const intro = clipped(value.slice(0, 2_100), 2_100);
+    const intro = before(value, /(?:^|\n)[A-ZА-Я0-9. ]*MODULE\s*\d+\b/i, 2_100);
     const modulePart = moduleNumber == null ? '' : section(
       value,
       new RegExp(`(?:^|\\n)[A-ZА-Я0-9. ]*MODULE\\s*0?${moduleNumber}\\b`, 'i'),
@@ -98,7 +105,7 @@ export function compactPlanningText(kind: PlanningDocumentKind, text: string, mo
   }
 
   if (kind === 'assessment-map') {
-    const intro = clipped(value.slice(0, 2_400), 2_400);
+    const intro = before(value, /(?:^|\n)PC1\s*[—-]|(?:^|\n)[A-ZА-Я0-9. ]*SPOTLIGHT PROGRESS CHECK/i, 2_400);
     if (moduleNumber == null) return uniqueSegments([intro], 3_000);
     const progress = section(
       value,
