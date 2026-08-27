@@ -1,5 +1,3 @@
-import { buildCommunicativeCorePrompt } from '@/lib/communicative-core';
-
 export type AiRoute = 'fast' | 'standard' | 'analysis';
 
 type AiUsageRecord = {
@@ -173,6 +171,7 @@ export async function generateKieText({
   let effectiveInput = input;
   if (purpose === 'communicative-warm-up') {
     try {
+      const { buildCommunicativeCorePrompt } = await import('@/lib/communicative-core');
       const communicativeContract = await buildCommunicativeCorePrompt(enrollmentId);
       if (communicativeContract.trim()) {
         effectiveInput = [...input, { type: 'input_text', text: communicativeContract }];
