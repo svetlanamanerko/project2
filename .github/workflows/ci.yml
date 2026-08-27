@@ -26,5 +26,7 @@ jobs:
         run: npm run test:ai-routing
       - name: Проверить Communicative Core
         run: npm run test:communicative-core
+      - name: Проверить Course Baseline и Module Brief
+        run: npm run test:course-planning-guidance
       - name: Проверить production build
         run: npm run build

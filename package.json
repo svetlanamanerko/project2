@@ -13,6 +13,7 @@
     "test:course-methodology": "node --experimental-strip-types scripts/check-course-methodology.mjs",
     "test:history-bootstrap": "node --experimental-strip-types scripts/check-history-bootstrap.mjs",
     "test:communicative-core": "node --experimental-strip-types scripts/check-communicative-core.mjs",
+    "test:course-planning-guidance": "node --experimental-strip-types scripts/check-course-planning-guidance.mjs",
     "start": "next start -H 0.0.0.0 -p ${PORT:-3000}",
     "migrate": "node scripts/migrate.mjs"
   },
