@@ -28,5 +28,7 @@ jobs:
         run: npm run test:communicative-core
       - name: Проверить Course Baseline и Module Brief
         run: npm run test:course-planning-guidance
+      - name: Проверить выбор страниц источника
+        run: npm run test:source-resolution
       - name: Проверить production build
         run: npm run build
