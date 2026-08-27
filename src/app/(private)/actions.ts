@@ -13,6 +13,7 @@ import { validDuration, validStartTime, validWeekday } from '@/lib/schedule-util
 import { normalizeLearningLabel, validLearningPriority } from '@/lib/learning-queue-utils';
 import { runHistoryBootstrap } from '@/lib/history-bootstrap';
 import { findingFingerprint, type HistoryBootstrapAnalysis } from '@/lib/history-bootstrap-utils';
+import { KieRequestError } from '@/lib/ai-routing';
 
 function requireDb() {
   if (!dbConfigured()) throw new Error('Сначала подключите PostgreSQL');
@@ -163,7 +164,10 @@ export async function generateHistoryBootstrapAction(formData: FormData) {
   } catch (error) {
     console.error('[history-bootstrap] Analysis failed:', error);
     const message = error instanceof Error ? error.message : '';
-    redirect(`/students/${studentId}?history=${/drive|google/i.test(message) ? 'drive-error' : 'ai-error'}#history-${enrollmentId}`);
+    const failure = /drive|google/i.test(message)
+      ? 'drive-error'
+      : error instanceof KieRequestError && [500, 502, 503, 504].includes(error.status) ? 'kie-unavailable' : 'ai-error';
+    redirect(`/students/${studentId}?history=${failure}#history-${enrollmentId}`);
   }
   revalidatePath(`/students/${studentId}`);
   redirect(`/students/${studentId}?history=review#history-${enrollmentId}`);

@@ -61,6 +61,9 @@ const actionsSource = fs.readFileSync(new URL('../src/app/(private)/actions.ts',
 const runAction = actionsSource.match(/export async function generateHistoryBootstrapAction[\s\S]*?(?=\nexport async function)/)?.[0] || '';
 const confirmAction = actionsSource.match(/export async function confirmHistoryBootstrapAction[\s\S]*?(?=\nexport async function)/)?.[0] || '';
 assert.match(runAction, /runHistoryBootstrap\(studentId, enrollmentId\)/);
+assert.match(runAction, /error instanceof KieRequestError/);
+assert.match(runAction, /kie-unavailable/);
+assert.doesNotMatch(runAction, /INSERT INTO historical_coverage|UPDATE historical_coverage/);
 assert.match(confirmAction, /INSERT INTO historical_coverage/);
 assert.match(confirmAction, /included \? 'confirmed' : 'rejected'/);
 assert.match(confirmAction, /history_bootstrap/);
@@ -72,6 +75,7 @@ const pageSource = fs.readFileSync(new URL('../src/app/(private)/students/[stude
 assert.match(pageSource, /action=\{generateHistoryBootstrapAction\}/);
 assert.match(pageSource, /action=\{confirmHistoryBootstrapAction\}/);
 assert.match(pageSource, /Старые материалы ещё не анализировались/);
+assert.match(pageSource, /KIE\/Claude временно не ответил\. История не изменена/);
 assert.doesNotMatch(pageSource, /getCourseHistoricalMaterialCandidates|generateKieText/);
 
 const learningSource = fs.readFileSync(new URL('../src/lib/student-learning-context.ts', import.meta.url), 'utf8');

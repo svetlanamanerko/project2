@@ -164,6 +164,7 @@ export default async function StudentPage({ params, searchParams }: PageProps<'/
             return <section className={styles.historyBootstrap} id={`history-${course.enrollmentId}`}>
               <div className={styles.historyBootstrapHead}><div><ArchiveRestore size={17}/><div><strong>История до Мастерской</strong><span>{course.title}</span></div></div></div>
               {query.history === 'drive-error' && <div className="notice warning">Не удалось прочитать папку курса. История не изменена.</div>}
+              {query.history === 'kie-unavailable' && <div className="notice warning">KIE/Claude временно не ответил. История не изменена. Попробуйте повторить позже.</div>}
               {query.history === 'ai-error' && <div className="notice warning">Не удалось проанализировать старые материалы. История не изменена.</div>}
               {query.history === 'confirmed' && <div className="notice success">История подтверждена преподавателем.</div>}
               {confirmed.length > 0 ? <>
