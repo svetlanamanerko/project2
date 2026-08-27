@@ -22,6 +22,8 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Проверить History Bootstrap и рекомендации
         run: npm run test:history-bootstrap
+      - name: Проверить AI routing
+        run: npm run test:ai-routing
       - name: Проверить Communicative Core
         run: npm run test:communicative-core
       - name: Проверить production build
