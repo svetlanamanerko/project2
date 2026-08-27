@@ -14,6 +14,7 @@
     "test:history-bootstrap": "node --experimental-strip-types scripts/check-history-bootstrap.mjs",
     "test:communicative-core": "node --experimental-strip-types scripts/check-communicative-core.mjs",
     "test:course-planning-guidance": "node --experimental-strip-types scripts/check-course-planning-guidance.mjs",
+    "test:source-resolution": "node --experimental-strip-types scripts/check-source-resolution.mjs",
     "start": "next start -H 0.0.0.0 -p ${PORT:-3000}",
     "migrate": "node scripts/migrate.mjs"
   },
@@ -28,7 +29,7 @@
   "devDependencies": {
     "@types/node": "^22.10.0",
     "@types/react": "^19.0.0",
-    "@types/react-dom": "^19.0.0",
+    "@types/react-dom": "^19.1.0",
     "typescript": "^5.7.0"
   }
 }
