@@ -1,3 +1,5 @@
+import { buildCommunicativeCorePrompt } from '@/lib/communicative-core';
+
 export type AiRoute = 'fast' | 'standard' | 'analysis';
 
 type AiUsageRecord = {
@@ -168,6 +170,18 @@ export async function generateKieText({
   retryDelayMs?: number;
 }) {
   const model = getAiModel(route);
+  let effectiveInput = input;
+  if (purpose === 'communicative-warm-up') {
+    try {
+      const communicativeContract = await buildCommunicativeCorePrompt(enrollmentId);
+      if (communicativeContract.trim()) {
+        effectiveInput = [...input, { type: 'input_text', text: communicativeContract }];
+      }
+    } catch (error) {
+      console.error('[ai-routing] Communicative Core context unavailable:', error instanceof Error ? error.name : 'unknown error');
+    }
+  }
+
   const recorder = usageRecorder || (async (record: AiUsageRecord) => {
     const usage = await import('@/lib/ai-usage');
     await usage.recordAiUsage(record);
@@ -190,14 +204,14 @@ export async function generateKieText({
     const url = claudeTransport ? 'https://api.kie.ai/claude/v1/messages' : 'https://api.kie.ai/codex/v1/responses';
     const body = JSON.stringify(claudeTransport ? {
       model,
-      messages: [{ role: 'user', content: input.filter((part) => part.type === 'input_text').map((part) => part.text).join('\n\n') }],
+      messages: [{ role: 'user', content: effectiveInput.filter((part) => part.type === 'input_text').map((part) => part.text).join('\n\n') }],
       thinkingFlag: true,
       stream: false,
       max_tokens: 4096,
     } : {
       model,
       stream: false,
-      input: [{ role: 'user', content: input }],
+      input: [{ role: 'user', content: effectiveInput }],
       reasoning: { effort: analysis ? 'high' : 'low' },
     });
     const maxAttempts = analysis ? 2 : 1;
@@ -224,7 +238,7 @@ export async function generateKieText({
       if (attemptCredits !== null) credits = (credits ?? 0) + attemptCredits;
 
       if (!response.ok) {
-        const providerMessage = safeProviderDetails(kieProviderErrorMessage(payload, fallbackText), key, input);
+        const providerMessage = safeProviderDetails(kieProviderErrorMessage(payload, fallbackText), key, effectiveInput);
         const requestError = new KieRequestError(`KIE ответил HTTP ${response.status}.`, response.status, providerMessage);
         if (attempt < maxAttempts && retryableAnalysisStatus(route, response.status)) {
           console.warn('[ai-routing] KIE analysis retrying', { route, model, purpose, status: response.status, provider: providerMessage || 'details unavailable' });
