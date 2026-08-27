@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { activeSlotsForWeekday, validDuration, validStartTime, validWeekday } from '../src/lib/schedule-utils.ts';
+import { activeSlotsForWeekday, normalizeScheduleInputRows, validDuration, validStartTime, validWeekday } from '../src/lib/schedule-utils.ts';
 
 let slots=[
   {id:'monday',enrollmentId:'one',weekday:1,time:'16:00',durationMinutes:60,active:true},
@@ -20,8 +20,31 @@ assert.deepEqual(activeSlotsForWeekday(slots,2).map((slot)=>slot.id),['tuesday-l
 assert.equal(validWeekday(7)&&!validWeekday(8),true);
 assert.equal(validStartTime('09:30')&&!validStartTime('25:00'),true);
 assert.equal(validDuration(30)&&validDuration(180)&&!validDuration(29),true);
+
+assert.deepEqual(normalizeScheduleInputRows(['1','4'],['16:00','17:30'],['60','90']),[
+  {weekday:1,time:'16:00',durationMinutes:60},
+  {weekday:4,time:'17:30',durationMinutes:90},
+]);
+assert.deepEqual(normalizeScheduleInputRows(['','','8'],['','', '10:00'],['60','60','60']),[]);
+assert.deepEqual(normalizeScheduleInputRows(['2','2'],['18:00','18:00'],['60','75']),[
+  {weekday:2,time:'18:00',durationMinutes:75},
+]);
+
 const migration=fs.readFileSync(new URL('../db/migrations/005_weekly_schedule_duration.sql',import.meta.url),'utf8');
 assert.match(migration,/duration_minutes integer DEFAULT 60/);
 assert.match(migration,/SET duration_minutes = 60/);
 assert.match(migration,/schedule_rules_active_slot_uidx/);
+
+const setupPage=fs.readFileSync(new URL('../src/app/(private)/students/page.tsx',import.meta.url),'utf8');
+assert.match(setupPage,/InitialScheduleRows/);
+assert.match(setupPage,/configureStudentCourseWithSchedule/);
+assert.doesNotMatch(setupPage,/Первый слот расписания/);
+const setupAction=fs.readFileSync(new URL('../src/app/(private)/students/actions.ts',import.meta.url),'utf8');
+assert.match(setupAction,/formData\.getAll\('weekday'\)/);
+assert.match(setupAction,/normalizeScheduleInputRows/);
+const setupEditor=fs.readFileSync(new URL('../src/app/(private)/students/InitialScheduleRows.tsx',import.meta.url),'utf8');
+assert.match(setupEditor,/Добавить занятие/);
+assert.match(setupEditor,/name="weekday"/);
+assert.match(setupEditor,/name="time"/);
+assert.match(setupEditor,/name="durationMinutes"/);
 console.log('Weekly schedule checks passed.');

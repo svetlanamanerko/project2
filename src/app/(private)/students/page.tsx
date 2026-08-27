@@ -1,20 +1,12 @@
-import { BookOpenCheck, Clock3, Plus, UserRound } from 'lucide-react';
+import { BookOpenCheck, Plus, UserRound } from 'lucide-react';
 import Link from 'next/link';
 import { dbConfigured } from '@/lib/db';
 import { getCourses, getEnrollments, getStudents } from '@/lib/data';
 import { EmptyState } from '@/components/EmptyState';
-import { addStudent, configureStudentCourse } from '../actions';
+import { addStudent } from '../actions';
+import { configureStudentCourseWithSchedule } from './actions';
+import { InitialScheduleRows } from './InitialScheduleRows';
 import styles from './students.module.css';
-
-const weekdays = [
-  ['1', 'Понедельник'],
-  ['2', 'Вторник'],
-  ['3', 'Среда'],
-  ['4', 'Четверг'],
-  ['5', 'Пятница'],
-  ['6', 'Суббота'],
-  ['7', 'Воскресенье'],
-];
 
 export default async function StudentsPage({ searchParams }: PageProps<'/students'>) {
   const [students, courses, enrollments, params] = await Promise.all([getStudents(), getCourses(), getEnrollments(), searchParams]);
@@ -38,19 +30,17 @@ export default async function StudentsPage({ searchParams }: PageProps<'/student
     </div>
 
     <section className={`panel ${styles.learningSetup}`} id="learning-setup">
-      <div className="panel-title"><div><h2><BookOpenCheck size={18}/>Настроить обучение</h2><p className="muted small">Сначала свяжите ученика с курсом и укажите школьную позицию. Первый слот расписания можно добавить здесь, остальные — в карточке ученика.</p></div><span className="soft-badge">курс и позиция</span></div>
+      <div className="panel-title"><div><h2><BookOpenCheck size={18}/>Настроить обучение</h2><p className="muted small">Свяжите ученика с курсом, укажите школьную позицию и при необходимости сразу добавьте все регулярные занятия.</p></div><span className="soft-badge">курс и позиция</span></div>
 
-      {!hasDb ? <div className="notice warning">Сначала подключим PostgreSQL.</div> : students.length === 0 || courses.length === 0 ? <div className="notice warning">Сначала добавьте хотя бы одного ученика и один курс.</div> : <form action={configureStudentCourse} className={styles.setupGrid}>
+      {!hasDb ? <div className="notice warning">Сначала подключим PostgreSQL.</div> : students.length === 0 || courses.length === 0 ? <div className="notice warning">Сначала добавьте хотя бы одного ученика и один курс.</div> : <form action={configureStudentCourseWithSchedule} className={styles.setupGrid}>
         <label>Ученик<select name="studentId" required defaultValue={selectedStudentId}><option value="" disabled>Выберите ученика</option>{students.map((s) => <option value={s.id} key={s.id}>{s.displayName}</option>)}</select></label>
         <label>Курс<select name="courseId" required defaultValue=""><option value="" disabled>Выберите курс</option>{courses.map((c) => <option value={c.id} key={c.id}>{c.title}</option>)}</select></label>
-        <label>День<select name="weekday" defaultValue=""><option value="">Пока не указывать</option>{weekdays.map(([value,label]) => <option value={value} key={value}>{label}</option>)}</select></label>
-        <label>Время<div className={styles.inputIcon}><Clock3 size={16}/><input name="time" type="time"/></div></label>
-        <label>Длительность<input name="durationMinutes" type="number" min="30" max="180" step="1" defaultValue="60"/></label>
-        <label>Модуль / раздел<input name="module" placeholder="Например, Module 1"/></label>
-        <label>Тема школы<input name="topic" placeholder="Например, Present Simple"/></label>
+        <InitialScheduleRows/>
+        <label className={styles.wideField}>Модуль / раздел<input name="module" placeholder="Например, Module 1"/></label>
+        <label className={styles.wideField}>Тема школы<input name="topic" placeholder="Например, Present Simple"/></label>
         <label className={styles.note}>Что важно сейчас<textarea name="note" rows={2} placeholder="Школа ушла вперёд; не поняла вопросы; скоро контрольная…"/></label>
         <button className={`button primary ${styles.submit}`} type="submit">Сохранить маршрут</button>
-        <p className={`muted small ${styles.scheduleHint}`}>После сохранения добавляйте и изменяйте все регулярные занятия в карточке ученика.</p>
+        <p className={`muted small ${styles.scheduleHint}`}>Регулярное расписание можно позже добавлять, менять и отключать в карточке ученика.</p>
       </form>}
     </section>
 
