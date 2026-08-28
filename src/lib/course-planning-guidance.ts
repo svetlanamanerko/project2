@@ -5,6 +5,8 @@ import {
   isPlanningGuidanceFolder,
   moduleBriefScore,
   moduleNumberFromIntent,
+  ogeBlockNumberFromIntent,
+  ogeTechnologicalMapScore,
   planningDocumentKind,
   type PlanningDocumentKind,
 } from '@/lib/course-planning-guidance-utils';
@@ -30,33 +32,64 @@ export type PlanningGuidanceDocument = {
 
 export type CoursePlanningGuidance = {
   available: boolean;
+  mode: 'textbook' | 'oge';
   module: string | null;
+  ogeBlock: string | null;
   hierarchy: string[];
   federalBaseline: PlanningGuidanceDocument | null;
   assessmentMap: PlanningGuidanceDocument | null;
   coursePriorityMap: PlanningGuidanceDocument | null;
   courseMap: PlanningGuidanceDocument | null;
   moduleBrief: PlanningGuidanceDocument | null;
+  ogeNavigatorBaseline: PlanningGuidanceDocument | null;
+  ogeMasterCurriculum: PlanningGuidanceDocument | null;
+  ogeStudentRoute: PlanningGuidanceDocument | null;
+  ogeCoverageAudit: PlanningGuidanceDocument | null;
+  ogeBankCompletion: PlanningGuidanceDocument | null;
+  ogeTechnologicalMap: PlanningGuidanceDocument | null;
 };
 
 const cache = new Map<string, { expiresAt: number; value: CoursePlanningGuidance }>();
 
-function emptyGuidance(moduleNumber: number | null): CoursePlanningGuidance {
+function textbookHierarchy() {
+  return [
+    'Federal Baseline — обязательные результаты курса',
+    'Assessment Map — официальная/школьная evidence layer',
+    'Course Priority Map — CORE / IMPORTANT / HOME / SKIP решения',
+    'Module Brief — конкретные end-of-module outcomes и маршрут текущего модуля',
+    'Course Map — фактические слоты, темы и страницы курса',
+  ];
+}
+
+function ogeHierarchy() {
+  return [
+    'OGE Navigator Baseline — официальный тематический каркас и правила работы с банком',
+    'OGE Master Curriculum — полный маршрут и обязательное покрытие экзамена',
+    'OGE Student Route — индивидуальная адаптация по диагностике и результатам ученика',
+    'Navigator Coverage Audit / Bank Completion — контроль 47 подтем и банка QID/ZID',
+    'Technological Map текущего блока — проверенный отбор ОСНОВНОЕ / ЗАПАС / НЕ БЕРЁМ',
+    'Navigator candidates + история ученика — конкретное наполнение следующего урока',
+  ];
+}
+
+function emptyGuidance(moduleNumber: number | null, blockNumber: number | null): CoursePlanningGuidance {
   return {
     available: false,
+    mode: 'textbook',
     module: moduleNumber ? `Module ${moduleNumber}` : null,
-    hierarchy: [
-      'Federal Baseline — обязательные результаты курса',
-      'Assessment Map — официальная/школьная evidence layer',
-      'Course Priority Map — CORE / IMPORTANT / HOME / SKIP решения',
-      'Module Brief — конкретные end-of-module outcomes и маршрут текущего модуля',
-      'Course Map — фактические слоты, темы и страницы курса',
-    ],
+    ogeBlock: blockNumber ? `Block ${blockNumber}` : null,
+    hierarchy: textbookHierarchy(),
     federalBaseline: null,
     assessmentMap: null,
     coursePriorityMap: null,
     courseMap: null,
     moduleBrief: null,
+    ogeNavigatorBaseline: null,
+    ogeMasterCurriculum: null,
+    ogeStudentRoute: null,
+    ogeCoverageAudit: null,
+    ogeBankCompletion: null,
+    ogeTechnologicalMap: null,
   };
 }
 
@@ -120,17 +153,26 @@ function pickModuleBrief(entries: DriveEntry[], moduleNumber: number | null) {
     .sort((a, b) => b.score - a.score || a.entry.name.localeCompare(b.entry.name, 'ru'))[0]?.entry || null;
 }
 
+function pickOgeTechnologicalMap(entries: DriveEntry[], blockNumber: number | null) {
+  return entries
+    .filter((entry) => entry.mimeType === GOOGLE_DOC && planningDocumentKind(entry.name) === 'oge-technological-map')
+    .map((entry) => ({ entry, score: ogeTechnologicalMapScore(entry.name, blockNumber) }))
+    .filter((item) => item.score > 0)
+    .sort((a, b) => b.score - a.score || a.entry.name.localeCompare(b.entry.name, 'ru'))[0]?.entry || null;
+}
+
 async function hydrate(
   token: string,
   entry: DriveEntry | null,
   kind: PlanningDocumentKind,
   moduleNumber: number | null,
+  blockNumber: number | null,
   signal?: AbortSignal,
 ): Promise<PlanningGuidanceDocument | null> {
   if (!entry) return null;
   try {
     const raw = await exportGoogleDocText(token, entry.id, signal);
-    const text = compactPlanningText(kind, raw, moduleNumber);
+    const text = compactPlanningText(kind, raw, moduleNumber, blockNumber);
     if (!text) return null;
     return { id: entry.id, title: entry.name, url: entry.webViewLink || null, text };
   } catch (error) {
@@ -149,9 +191,10 @@ export async function getCoursePlanningGuidance({
   signal?: AbortSignal;
 }): Promise<CoursePlanningGuidance> {
   const moduleNumber = moduleNumberFromIntent(lessonIntent);
-  if (!courseFolderId) return emptyGuidance(moduleNumber);
+  const blockNumber = ogeBlockNumberFromIntent(lessonIntent);
+  if (!courseFolderId) return emptyGuidance(moduleNumber, blockNumber);
 
-  const cacheKey = `${courseFolderId}:${moduleNumber ?? 'course'}`;
+  const cacheKey = `${courseFolderId}:${moduleNumber ?? 'course'}:${blockNumber ?? 'oge-course'}`;
   const cached = cache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return cached.value;
 
@@ -168,23 +211,59 @@ export async function getCoursePlanningGuidance({
   const priorityEntry = pickByKind(entries, 'course-priority-map');
   const courseMapEntry = pickByKind(entries, 'course-map');
   const moduleBriefEntry = pickModuleBrief(entries, moduleNumber);
+  const ogeNavigatorEntry = pickByKind(entries, 'oge-navigator-baseline');
+  const ogeMasterEntry = pickByKind(entries, 'oge-master-curriculum');
+  const ogeStudentRouteEntry = pickByKind(entries, 'oge-student-route');
+  const ogeCoverageEntry = pickByKind(entries, 'oge-coverage-audit');
+  const ogeBankEntry = pickByKind(entries, 'oge-bank-completion');
+  const ogeTechnologicalEntry = pickOgeTechnologicalMap(entries, blockNumber);
 
-  const [federalBaseline, assessmentMap, coursePriorityMap, courseMap, moduleBrief] = await Promise.all([
-    hydrate(token, federalEntry, 'federal-baseline', moduleNumber, signal),
-    hydrate(token, assessmentEntry, 'assessment-map', moduleNumber, signal),
-    hydrate(token, priorityEntry, 'course-priority-map', moduleNumber, signal),
-    hydrate(token, courseMapEntry, 'course-map', moduleNumber, signal),
-    hydrate(token, moduleBriefEntry, 'module-brief', moduleNumber, signal),
-  ]);
-
-  const value: CoursePlanningGuidance = {
-    ...emptyGuidance(moduleNumber),
-    available: Boolean(federalBaseline || assessmentMap || coursePriorityMap || courseMap || moduleBrief),
+  const [
     federalBaseline,
     assessmentMap,
     coursePriorityMap,
     courseMap,
     moduleBrief,
+    ogeNavigatorBaseline,
+    ogeMasterCurriculum,
+    ogeStudentRoute,
+    ogeCoverageAudit,
+    ogeBankCompletion,
+    ogeTechnologicalMap,
+  ] = await Promise.all([
+    hydrate(token, federalEntry, 'federal-baseline', moduleNumber, blockNumber, signal),
+    hydrate(token, assessmentEntry, 'assessment-map', moduleNumber, blockNumber, signal),
+    hydrate(token, priorityEntry, 'course-priority-map', moduleNumber, blockNumber, signal),
+    hydrate(token, courseMapEntry, 'course-map', moduleNumber, blockNumber, signal),
+    hydrate(token, moduleBriefEntry, 'module-brief', moduleNumber, blockNumber, signal),
+    hydrate(token, ogeNavigatorEntry, 'oge-navigator-baseline', moduleNumber, blockNumber, signal),
+    hydrate(token, ogeMasterEntry, 'oge-master-curriculum', moduleNumber, blockNumber, signal),
+    hydrate(token, ogeStudentRouteEntry, 'oge-student-route', moduleNumber, blockNumber, signal),
+    hydrate(token, ogeCoverageEntry, 'oge-coverage-audit', moduleNumber, blockNumber, signal),
+    hydrate(token, ogeBankEntry, 'oge-bank-completion', moduleNumber, blockNumber, signal),
+    hydrate(token, ogeTechnologicalEntry, 'oge-technological-map', moduleNumber, blockNumber, signal),
+  ]);
+
+  const isOge = Boolean(ogeNavigatorBaseline || ogeMasterCurriculum || ogeStudentRoute || ogeCoverageAudit || ogeBankCompletion || ogeTechnologicalMap);
+  const value: CoursePlanningGuidance = {
+    ...emptyGuidance(moduleNumber, blockNumber),
+    available: Boolean(
+      federalBaseline || assessmentMap || coursePriorityMap || courseMap || moduleBrief
+      || ogeNavigatorBaseline || ogeMasterCurriculum || ogeStudentRoute || ogeCoverageAudit || ogeBankCompletion || ogeTechnologicalMap
+    ),
+    mode: isOge ? 'oge' : 'textbook',
+    hierarchy: isOge ? ogeHierarchy() : textbookHierarchy(),
+    federalBaseline,
+    assessmentMap,
+    coursePriorityMap,
+    courseMap,
+    moduleBrief,
+    ogeNavigatorBaseline,
+    ogeMasterCurriculum,
+    ogeStudentRoute,
+    ogeCoverageAudit,
+    ogeBankCompletion,
+    ogeTechnologicalMap,
   };
   cache.set(cacheKey, { expiresAt: Date.now() + CACHE_TTL_MS, value });
   return value;
