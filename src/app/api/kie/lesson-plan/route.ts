@@ -77,6 +77,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, message: 'Маршрут ученика не найден.' }, { status: 404 });
   }
   const lessonContext = await buildLessonContext(context.studentId, { enrollmentId });
+  const isOge = lessonContext.planningGuidance.mode === 'oge' || /\b(oge|огэ)\b/i.test(context.course);
 
   const [recycling, urgent, skills, observations, learningPlan] = await Promise.all([
     sql<Array<{ label: string; category: string }>>`
@@ -108,17 +109,19 @@ export async function POST(request: Request) {
   ]);
 
   let preparedSource: PreparedLessonSource | null = null;
-  try {
-    preparedSource = await prepareLessonSourceWithPlanning({
-      courseTitle: context.course,
-      courseFolderId: context.courseFolderId,
-      courseProfile: context.courseProfile,
-      module: context.module,
-      topic: context.topic,
-      note: context.note,
-    }, key, lessonContext.planningGuidance.moduleBrief?.text);
-  } catch (error) {
-    console.error('[lesson-source] Не удалось подготовить страницы учебника:', error);
+  if (!isOge) {
+    try {
+      preparedSource = await prepareLessonSourceWithPlanning({
+        courseTitle: context.course,
+        courseFolderId: context.courseFolderId,
+        courseProfile: context.courseProfile,
+        module: context.module,
+        topic: context.topic,
+        note: context.note,
+      }, key, lessonContext.planningGuidance.moduleBrief?.text);
+    } catch (error) {
+      console.error('[lesson-source] Не удалось подготовить страницы учебника:', error);
+    }
   }
 
   const observationText = observations.length
@@ -131,24 +134,44 @@ export async function POST(request: Request) {
     `Постоянный контекст ученика: ${context.studentContext || 'не заполнен'}`,
     `Курс: ${context.course}`,
     `Модуль/раздел: ${context.module || 'не указан'}`,
-    `Тема школы: ${context.topic || 'не указана'}`,
+    `Тема школы/текущий блок: ${context.topic || 'не указана'}`,
     `Что важно сейчас: ${context.note || 'нет заметки'}`,
     `Наблюдения по прошлым урокам: ${observationText}`,
     `Активный план обучения: ${learningPlan.length ? learningPlan.map((x) => x.label).join('; ') : 'пока пуст'}`,
-    `Источник Google Drive: ${preparedSource ? preparedSource.label : 'точный фрагмент не найден или не указан'}`,
+    `Источник Google Drive: ${preparedSource ? preparedSource.label : isOge ? 'OGE Navigator + методическая база курса' : 'точный фрагмент не найден или не указан'}`,
     `На повторение: ${recycling.length ? recycling.map((x) => `${x.label}${x.category ? ` (${x.category})` : ''}`).join('; ') : 'ничего не отмечено'}`,
     `Срочные запросы: ${urgent.length ? urgent.map((x) => x.description).join(' | ') : 'нет'}`,
     `Профиль навыков: ${skills.length ? skills.map((x) => `${x.skill} ${x.level}/100${x.note ? ` — ${x.note}` : ''}`).join('; ') : 'пока не заполнен'}`,
-    `COURSE BASELINE / MODULE BRIEF: ${JSON.stringify(lessonContext.planningGuidance)}`,
+    `PLANNING GUIDANCE: ${JSON.stringify(lessonContext.planningGuidance)}`,
     `Отобранный lesson context (Course Map → Progress → Drive/Navigator): ${JSON.stringify(lessonContext)}`,
     `HISTORICAL COVERAGE: ${JSON.stringify(lessonContext.historicalCoverage)}. Это темы и материалы, которые встречались до начала журнала, а не доказательство mastery. Избегай случайного дословного повторения старых материалов. Повторяй тему, если current student context, recycling или история этого требуют.`,
   ].join('\n');
 
   const sourceRule = preparedSource
     ? `К сообщению приложен PDF-фрагмент реального учебника (${preparedSource.label}). Изучи именно эти страницы. Можно ссылаться на реально видимые упражнения, тексты, лексику и грамматику, но ничего не додумывай за пределами приложенного фрагмента.`
-    : 'PDF-фрагмент учебника не приложен. Не выдумывай содержание страниц, номера упражнений, тексты или лексику; если они нужны, укажи, что нужен источник.';
+    : isOge
+      ? 'Для курса ОГЭ отдельный PDF учебника не обязателен. Источники фактов — OGE planning documents и реальные Navigator candidates из lesson context. Никогда не придумывай QID/ZID, формулировку задания или его содержание. Если технологическая карта закрепляет конкретный QID/ZID, она важнее случайного нового кандидата.'
+      : 'PDF-фрагмент учебника не приложен. Не выдумывай содержание страниц, номера упражнений, тексты или лексику; если они нужны, укажи, что нужен источник.';
 
-  const prompt = `Ты методист личной Мастерской уроков преподавателя английского. Составь КОРОТКИЙ ПЛАН ПОДГОТОВКИ к индивидуальному уроку на 60 минут. Это ещё не worksheet.\n\nДАННЫЕ ИЗ БАЗЫ:\n${sourceContext}\n\nРАБОТА С ИСТОЧНИКОМ:\n${sourceRule}\n\nИЕРАРХИЯ ПЛАНИРОВАНИЯ:\n- Federal Baseline задаёт обязательные результаты курса и не может быть отменён красивой/неудобной страницей учебника;\n- Assessment Map показывает, каким evidence проверять результат;\n- Course Priority Map задаёт CORE / IMPORTANT / HOME / SKIP решения и реальный часовой бюджет;\n- Module Brief, если найден для текущего модуля, является главным модульным decision layer: планируй backward от его end-of-module outcomes;\n- Course Map определяет фактическое место ученика в маршруте, но сам по себе не делает каждую следующую страницу CORE;\n- реальный фрагмент учебника определяет фактическое содержание страницы: baseline никогда не даёт права придумывать текст/упражнения, которых нет в источнике;\n- данные конкретного ученика определяют объём поддержки, повторения и темп. Контакт с материалом в истории не равен mastery.\n\nЖЁСТКИЕ ПРАВИЛА:\n- опирайся на данные базы, историю ученика, наблюдения преподавателя и приложенный источник, если он есть;\n- если Module Brief содержит конкретный slot/маршрут для текущего этапа, соотнеси урок именно с ним и НЕ пытайся закрыть весь модуль за один урок;\n- если Course Priority Map/Module Brief помечает материал SHORTEN/HOME/OPTIONAL/SKIP, не растягивай его на полный live-блок без доказанной индивидуальной причины;\n- если обязательный outcome ещё не доказан, не выбрасывай его только потому, что страница кажется дополнительной;\n- НЕ выдумывай упражнения, тексты, слова, правила или задания, которых нет в источнике/данных;\n- активные пункты плана обучения должны влиять на приоритеты урока, если они релевантны текущей школьной теме;\n- учитывай школьный темп: не предлагай надолго задерживаться на одном материале;\n- обязательно предусмотрите вывод материала в речь;\n- каждый заголовок, каждый пункт CORE и каждый блок результата пиши С НОВОЙ СТРОКИ; не превращай ответ в один длинный абзац;\n- язык ответа — русский, компактно, без длинных объяснений.\n\nФОРМАТ:\nИсточник: ${preparedSource ? preparedSource.label : 'не найден'}\nМетодическая опора: ${lessonContext.planningGuidance.moduleBrief?.title || lessonContext.planningGuidance.coursePriorityMap?.title || 'Course Baseline не найден'}\nФокус урока: ...\nЦель: ...\nCORE 60 минут:\n1. ...\n2. ...\n3. ...\n4. ...\nSpeaking transfer: ...\nЧто повторить: ...\nHOME / SHORTEN: ...\nRESERVE: ...\nНужен дополнительный источник: ...`;
+  const planningHierarchy = isOge
+    ? `- OGE Navigator Baseline задаёт официальный тематический каркас, роли FIPI demo/Navigator и правило ручной проверки кандидатов;\n- OGE Master Curriculum задаёт полный backbone, но НЕ заставляет каждого ученика механически проходить все 72 позиции;\n- OGE Student Route решает, что делать именно этому ученику следующим: учитывай диагностику, историю, ошибки, skill profile и Repeat Queue;\n- Navigator Coverage Audit и FIPI Bank Completion Plan не дают потерять 47 подтем и QID/ZID, но количество заданий само по себе не является прогрессом;\n- Technological Map текущего блока, если найдена, является главным decision layer по конкретным заданиям: ОСНОВНОЕ / ЗАПАС / НЕ БЕРЁМ;\n- реальные Navigator candidates можно использовать только как кандидатов. Не повышай авто-label до ОСНОВНОГО без основания;\n- базовая пропорция Student Route: 70% текущий Master Block / 20% персональный recycle / 10% exam automation, с адаптацией по данным ученика.`
+    : `- Federal Baseline задаёт обязательные результаты курса и не может быть отменён красивой/неудобной страницей учебника;\n- Assessment Map показывает, каким evidence проверять результат;\n- Course Priority Map задаёт CORE / IMPORTANT / HOME / SKIP решения и реальный часовой бюджет;\n- Module Brief, если найден для текущего модуля, является главным модульным decision layer: планируй backward от его end-of-module outcomes;\n- Course Map определяет фактическое место ученика в маршруте, но сам по себе не делает каждую следующую страницу CORE;\n- реальный фрагмент учебника определяет фактическое содержание страницы: baseline никогда не даёт права придумывать текст/упражнения, которых нет в источнике;\n- данные конкретного ученика определяют объём поддержки, повторения и темп. Контакт с материалом в истории не равен mastery.`;
+
+  const modeRules = isOge
+    ? `- не откатывай ученика в Block 1, если фактическая позиция/история показывает более поздний блок;\n- не меняй тему только ради разнообразия и не возвращай весь прошлый блок из-за одной ошибки;\n- обязательно выбирай 1 главный exam skill/format текущего урока + короткий recycle ранее изученного;\n- speaking/writing transfer обязателен там, где это соответствует Master function;\n- QID/ZID можно называть только если они реально присутствуют в технологической карте или Navigator context;\n- если данных для выбора конкретного QID недостаточно, так и напиши: нужен просмотр кандидата, не выдумывай номер.`
+    : `- если Module Brief содержит конкретный slot/маршрут для текущего этапа, соотнеси урок именно с ним и НЕ пытайся закрыть весь модуль за один урок;\n- если Course Priority Map/Module Brief помечает материал SHORTEN/HOME/OPTIONAL/SKIP, не растягивай его на полный live-блок без доказанной индивидуальной причины;\n- если обязательный outcome ещё не доказан, не выбрасывай его только потому, что страница кажется дополнительной;\n- учитывай школьный темп: не предлагай надолго задерживаться на одном материале;\n- обязательно предусмотрите вывод материала в речь.`;
+
+  const methodologyTitle = isOge
+    ? lessonContext.planningGuidance.ogeTechnologicalMap?.title
+      || lessonContext.planningGuidance.ogeMasterCurriculum?.title
+      || lessonContext.planningGuidance.ogeNavigatorBaseline?.title
+      || 'OGE planning base не найдена'
+    : lessonContext.planningGuidance.moduleBrief?.title
+      || lessonContext.planningGuidance.coursePriorityMap?.title
+      || 'Course Baseline не найден';
+  const sourceTitle = preparedSource?.label || (isOge ? 'OGE Navigator + planning base' : 'не найден');
+
+  const prompt = `Ты методист личной Мастерской уроков преподавателя английского. Составь КОРОТКИЙ ПЛАН ПОДГОТОВКИ к индивидуальному уроку на 60 минут. Это ещё не worksheet.\n\nДАННЫЕ ИЗ БАЗЫ:\n${sourceContext}\n\nРАБОТА С ИСТОЧНИКОМ:\n${sourceRule}\n\nИЕРАРХИЯ ПЛАНИРОВАНИЯ:\n${planningHierarchy}\n\nЖЁСТКИЕ ПРАВИЛА:\n- опирайся на данные базы, историю ученика, наблюдения преподавателя и реальные источники;\n${modeRules}\n- НЕ выдумывай упражнения, тексты, слова, правила, QID/ZID или задания, которых нет в источнике/данных;\n- активные пункты плана обучения должны влиять на приоритеты урока, если они релевантны текущей теме;\n- каждый заголовок, каждый пункт CORE и каждый блок результата пиши С НОВОЙ СТРОКИ; не превращай ответ в один длинный абзац;\n- язык ответа — русский, компактно, без длинных объяснений.\n\nФОРМАТ:\nИсточник: ${sourceTitle}\nМетодическая опора: ${methodologyTitle}\nФокус урока: ...\nЦель: ...\nCORE 60 минут:\n1. ...\n2. ...\n3. ...\n4. ...\nSpeaking transfer: ...\nЧто повторить: ...\nHOME / SHORTEN: ...\nRESERVE: ...\nНужен дополнительный источник: ...`;
 
   try {
     const inputContent: KieInputPart[] = [
@@ -176,7 +199,7 @@ export async function POST(request: Request) {
       ORDER BY created_at DESC LIMIT 1
     `;
     const lessonId = lessonRows[0]?.id || randomUUID();
-    const sourcePosition = preparedSource?.label || null;
+    const sourcePosition = preparedSource?.label || (isOge ? methodologyTitle : null);
     if (lessonRows.length) {
       await sql`UPDATE lessons SET summary=${plan}, source_position=${sourcePosition} WHERE id=${lessonId}`;
     } else {
@@ -189,7 +212,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       ok: true,
       plan,
-      source: preparedSource?.label || null,
+      source: sourcePosition,
       credits: result.credits,
     });
   } catch (error) {
