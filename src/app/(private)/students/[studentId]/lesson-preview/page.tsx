@@ -21,15 +21,25 @@ export default async function LessonPreviewPage({ params, searchParams }: PagePr
     ? `${context.coursePlan.next.stage}${context.coursePlan.next.lesson ? ` / ${context.coursePlan.next.lesson}` : ''}`
     : 'не определён / будет выбран после диагностики';
   const planningDocs = [
+    context.planningGuidance.ogeNavigatorBaseline,
+    context.planningGuidance.ogeMasterCurriculum,
+    context.planningGuidance.ogeStudentRoute,
+    context.planningGuidance.ogeCoverageAudit,
+    context.planningGuidance.ogeBankCompletion,
+    context.planningGuidance.ogeTechnologicalMap,
     context.planningGuidance.federalBaseline,
     context.planningGuidance.assessmentMap,
     context.planningGuidance.coursePriorityMap,
     context.planningGuidance.courseMap,
     context.planningGuidance.moduleBrief,
   ].filter((item): item is NonNullable<typeof item> => Boolean(item));
-  const planningLabel = context.planningGuidance.moduleBrief?.title
+  const planningLabel = context.planningGuidance.ogeTechnologicalMap?.title
+    || context.planningGuidance.ogeMasterCurriculum?.title
+    || context.planningGuidance.moduleBrief?.title
     || context.planningGuidance.coursePriorityMap?.title
-    || (context.planningStatus.available ? 'Course Baseline найден' : 'не найден');
+    || (context.planningStatus.available ? 'Методическая база найдена' : 'не найдена');
+  const planningCaption = context.planningGuidance.mode === 'oge' ? 'OGE Planning' : 'Course Baseline';
+  const planningDetailsTitle = context.planningGuidance.mode === 'oge' ? 'Методическая база ОГЭ' : 'Методическая база курса';
 
   return <>
     <Link className={styles.back} href={`/students/${studentId}`}><ArrowLeft size={16}/>Карточка ученика</Link>
@@ -40,12 +50,12 @@ export default async function LessonPreviewPage({ params, searchParams }: PagePr
     </section>
     <section className={`panel ${styles.summary}`}>
       <div><ListChecks/><span><small>Course Map</small><strong>{context.coursePlan.current?.title || 'Текущая позиция задана вручную'}</strong></span></div>
-      <div><BookMarked/><span><small>Course Baseline</small><strong>{planningLabel}</strong></span></div>
+      <div><BookMarked/><span><small>{planningCaption}</small><strong>{planningLabel}</strong></span></div>
       <div><FolderOpen/><span><small>Google Drive</small><strong>{context.driveStatus.available ? `${context.driveMaterials.length} подходящих материалов` : 'временно недоступен'}</strong></span></div>
       <div><Sparkles/><span><small>OGE Navigator</small><strong>{!context.navigatorStatus.configured ? 'не настроен' : context.navigatorStatus.available ? `${context.navigatorCandidates.length} заданий` : 'временно недоступен'}</strong></span></div>
     </section>
     <div className={styles.details}>
-      <details open={context.planningStatus.available}><summary>Методическая база курса</summary>{planningDocs.length ? <ul>{planningDocs.map((item) => <li key={item.id}>{item.url ? <a href={item.url} target="_blank" rel="noreferrer">{item.title}</a> : item.title}</li>)}</ul> : <p className="muted small">В папке курса не найден Federal Baseline / Assessment Map / Course Priority Map / Module Brief.</p>}</details>
+      <details open={context.planningStatus.available}><summary>{planningDetailsTitle}</summary>{planningDocs.length ? <ul>{planningDocs.map((item) => <li key={item.id}>{item.url ? <a href={item.url} target="_blank" rel="noreferrer">{item.title}</a> : item.title}</li>)}</ul> : <p className="muted small">Методические документы курса пока не найдены в связанной папке Google Drive.</p>}</details>
       <details><summary>Материалы Google Drive</summary><ul>{context.driveMaterials.map((item) => <li key={item.id}>{item.path}</li>)}</ul></details>
       <details><summary>Задания ФИПИ</summary><ul>{context.navigatorCandidates.map((item) => <li key={item.qid}>QID {item.qid} · {item.section} · {item.preview}</li>)}</ul></details>
       <details><summary>Повторить / закончить</summary><ul>{[...context.repeatItems, ...context.unfinishedItems].map((item) => <li key={item}>{item}</li>)}</ul></details>
