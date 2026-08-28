@@ -49,6 +49,19 @@ export async function deleteStudent(formData: FormData) {
   revalidatePath('/students/progress');
 }
 
+export async function updateStudentProfile(formData: FormData) {
+  const studentId = String(formData.get('studentId') || '').trim();
+  const name = String(formData.get('name') || '').trim();
+  const gradeRaw = String(formData.get('grade') || '').trim();
+  if (!studentId || !name) return;
+  const grade = gradeRaw ? Number(gradeRaw) : null;
+  if (grade !== null && (!Number.isInteger(grade) || grade < 1 || grade > 11)) return;
+  await requireDb()`UPDATE students SET display_name=${name}, school_grade=${grade} WHERE id=${studentId} AND active=true`;
+  revalidatePath('/students');
+  revalidatePath(`/students/${studentId}`);
+  revalidatePath('/students/progress');
+}
+
 export async function updateStudentContext(formData: FormData) {
   const studentId = String(formData.get('studentId') || '').trim();
   const context = String(formData.get('context') || '').trim();
