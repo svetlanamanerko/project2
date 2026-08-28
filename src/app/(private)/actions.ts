@@ -14,6 +14,7 @@ import { normalizeLearningLabel, validLearningPriority } from '@/lib/learning-qu
 import { runHistoryBootstrap } from '@/lib/history-bootstrap';
 import { findingFingerprint, type HistoryBootstrapAnalysis } from '@/lib/history-bootstrap-utils';
 import { KieRequestError } from '@/lib/ai-routing';
+import { mergeCourseMethodology } from '@/lib/course-profile';
 
 function requireDb() {
   if (!dbConfigured()) throw new Error('Сначала подключите PostgreSQL');
@@ -354,12 +355,26 @@ export async function updateCourseMethodology(formData: FormData) {
   const methodology = String(formData.get('methodology') || '').trim();
   if (!courseId) return;
 
-  await requireDb()`
-    UPDATE courses
-    SET course_profile = COALESCE(course_profile, '{}'::jsonb)
-      || jsonb_build_object('methodology', ${methodology || null})
-    WHERE id=${courseId} AND active=true
-  `;
+  const sql = requireDb();
+  try {
+    const courses = await sql<Array<{ courseProfile: unknown }>>`
+      SELECT course_profile as "courseProfile"
+      FROM courses
+      WHERE id=${courseId} AND active=true
+      LIMIT 1
+    `;
+    if (!courses[0]) return;
+    const courseProfile = mergeCourseMethodology(courses[0].courseProfile, methodology);
+    await sql`
+      UPDATE courses
+      SET course_profile=${JSON.stringify(courseProfile)}::jsonb
+      WHERE id=${courseId} AND active=true
+    `;
+    console.log('[course-methodology] saved', { courseId, hasMethodology: Boolean(methodology) });
+  } catch (error) {
+    console.error('[course-methodology] save failed', { courseId, error });
+    throw error;
+  }
   revalidatePath(`/courses/${courseId}`);
 }
 
