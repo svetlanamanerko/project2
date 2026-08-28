@@ -2,6 +2,7 @@ import 'server-only';
 import { refreshGoogleAccessToken } from '@/lib/google-drive';
 import {
   compactPlanningText,
+  isPlanningGuidanceFolder,
   moduleBriefScore,
   moduleNumberFromIntent,
   planningDocumentKind,
@@ -34,6 +35,7 @@ export type CoursePlanningGuidance = {
   federalBaseline: PlanningGuidanceDocument | null;
   assessmentMap: PlanningGuidanceDocument | null;
   coursePriorityMap: PlanningGuidanceDocument | null;
+  courseMap: PlanningGuidanceDocument | null;
   moduleBrief: PlanningGuidanceDocument | null;
 };
 
@@ -48,10 +50,12 @@ function emptyGuidance(moduleNumber: number | null): CoursePlanningGuidance {
       'Assessment Map — официальная/школьная evidence layer',
       'Course Priority Map — CORE / IMPORTANT / HOME / SKIP решения',
       'Module Brief — конкретные end-of-module outcomes и маршрут текущего модуля',
+      'Course Map — фактические слоты, темы и страницы курса',
     ],
     federalBaseline: null,
     assessmentMap: null,
     coursePriorityMap: null,
+    courseMap: null,
     moduleBrief: null,
   };
 }
@@ -101,7 +105,11 @@ async function exportGoogleDocText(token: string, fileId: string, signal?: Abort
 }
 
 function pickByKind(entries: DriveEntry[], kind: PlanningDocumentKind) {
-  return entries.find((entry) => entry.mimeType === GOOGLE_DOC && planningDocumentKind(entry.name) === kind) || null;
+  return entries.find((entry) => (
+    entry.mimeType === GOOGLE_DOC
+    && planningDocumentKind(entry.name) === kind
+    && !/ARCHIVE|АРХИВ|TEMPLATE|ШАБЛОН/i.test(entry.name)
+  )) || null;
 }
 
 function pickModuleBrief(entries: DriveEntry[], moduleNumber: number | null) {
@@ -149,30 +157,33 @@ export async function getCoursePlanningGuidance({
 
   const token = await refreshGoogleAccessToken();
   const rootChildren = await listChildren(token, courseFolderId, signal);
-  const baselineFolders = rootChildren.filter((entry) => entry.mimeType === FOLDER && /COURSE\s+BASELINE/i.test(entry.name));
-  const nested = baselineFolders.length
-    ? (await Promise.all(baselineFolders.slice(0, 3).map((folder) => listChildren(token, folder.id, signal)))).flat()
+  const planningFolders = rootChildren.filter((entry) => entry.mimeType === FOLDER && isPlanningGuidanceFolder(entry.name));
+  const nested = planningFolders.length
+    ? (await Promise.all(planningFolders.slice(0, 5).map((folder) => listChildren(token, folder.id, signal)))).flat()
     : [];
   const entries = Array.from(new Map([...rootChildren, ...nested].map((entry) => [entry.id, entry])).values());
 
   const federalEntry = pickByKind(entries, 'federal-baseline');
   const assessmentEntry = pickByKind(entries, 'assessment-map');
   const priorityEntry = pickByKind(entries, 'course-priority-map');
+  const courseMapEntry = pickByKind(entries, 'course-map');
   const moduleBriefEntry = pickModuleBrief(entries, moduleNumber);
 
-  const [federalBaseline, assessmentMap, coursePriorityMap, moduleBrief] = await Promise.all([
+  const [federalBaseline, assessmentMap, coursePriorityMap, courseMap, moduleBrief] = await Promise.all([
     hydrate(token, federalEntry, 'federal-baseline', moduleNumber, signal),
     hydrate(token, assessmentEntry, 'assessment-map', moduleNumber, signal),
     hydrate(token, priorityEntry, 'course-priority-map', moduleNumber, signal),
+    hydrate(token, courseMapEntry, 'course-map', moduleNumber, signal),
     hydrate(token, moduleBriefEntry, 'module-brief', moduleNumber, signal),
   ]);
 
   const value: CoursePlanningGuidance = {
     ...emptyGuidance(moduleNumber),
-    available: Boolean(federalBaseline || assessmentMap || coursePriorityMap || moduleBrief),
+    available: Boolean(federalBaseline || assessmentMap || coursePriorityMap || courseMap || moduleBrief),
     federalBaseline,
     assessmentMap,
     coursePriorityMap,
+    courseMap,
     moduleBrief,
   };
   cache.set(cacheKey, { expiresAt: Date.now() + CACHE_TTL_MS, value });

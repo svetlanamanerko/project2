@@ -113,6 +113,7 @@ export async function buildLessonContext(studentId: string, options?: { enrollme
       federalBaseline: null,
       assessmentMap: null,
       coursePriorityMap: null,
+      courseMap: null,
       moduleBrief: null,
     };
   if (planningResult.status === 'rejected') {

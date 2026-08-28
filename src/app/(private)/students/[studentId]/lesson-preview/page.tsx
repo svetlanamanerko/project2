@@ -24,6 +24,7 @@ export default async function LessonPreviewPage({ params, searchParams }: PagePr
     context.planningGuidance.federalBaseline,
     context.planningGuidance.assessmentMap,
     context.planningGuidance.coursePriorityMap,
+    context.planningGuidance.courseMap,
     context.planningGuidance.moduleBrief,
   ].filter((item): item is NonNullable<typeof item> => Boolean(item));
   const planningLabel = context.planningGuidance.moduleBrief?.title

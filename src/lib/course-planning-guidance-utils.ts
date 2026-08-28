@@ -1,4 +1,4 @@
-export type PlanningDocumentKind = 'federal-baseline' | 'assessment-map' | 'course-priority-map' | 'module-brief';
+export type PlanningDocumentKind = 'federal-baseline' | 'assessment-map' | 'course-priority-map' | 'course-map' | 'module-brief';
 
 const SPACE_RE = /[\t\u00a0]+/g;
 
@@ -8,7 +8,13 @@ export function planningDocumentKind(name: string): PlanningDocumentKind | null 
   if (value.includes('FEDERAL BASELINE')) return 'federal-baseline';
   if (value.includes('ASSESSMENT MAP')) return 'assessment-map';
   if (value.includes('COURSE PRIORITY MAP')) return 'course-priority-map';
+  if (value.includes('COURSE MAP')) return 'course-map';
   return null;
+}
+
+export function isPlanningGuidanceFolder(name: string) {
+  const value = name.toLocaleUpperCase('ru-RU');
+  return value.includes('COURSE BASELINE') || value.includes('COURSE MAP');
 }
 
 export function isPlanningGuidancePath(path: string) {
@@ -96,6 +102,17 @@ export function compactPlanningText(kind: PlanningDocumentKind, text: string, mo
   const value = normalizeText(text);
   if (!value) return '';
   if (kind === 'module-brief') return clipped(value, 11_000);
+
+  if (kind === 'course-map') {
+    const intro = before(value, /(?:^|\n)[A-ZА-Я0-9. ]*MODULE\s*\d+\b/i, 2_500);
+    const modulePart = moduleNumber == null ? '' : section(
+      value,
+      new RegExp(`(?:^|\\n)[A-ZА-Я0-9. ]*MODULE\\s*0?${moduleNumber}\\b`, 'i'),
+      /\n[A-ZА-Я0-9. ]*MODULE\s*\d+\b/i,
+      7_500,
+    );
+    return uniqueSegments([intro, modulePart], 9_000);
+  }
 
   if (kind === 'course-priority-map') {
     const intro = before(value, /(?:^|\n)[A-ZА-Я0-9. ]*MODULE\s*\d+\b/i, 2_100);

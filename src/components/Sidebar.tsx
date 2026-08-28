@@ -19,7 +19,7 @@ export function Sidebar({ ownerName, logoutAction }: { ownerName: string; logout
   return (
     <aside className="sidebar">
       <div className="brand"><div className="brand-mark"><BookOpen size={28} /></div><div><strong>Мастерская<br/>уроков</strong><span>Единый центр подготовки</span></div></div>
-      <nav>{links.map(({ href, label, icon: Icon }) => <Link key={href} className={pathname === href || (href !== '/' && pathname.startsWith(`${href}/`)) ? 'nav-link active' : 'nav-link'} href={href}><Icon size={19}/><span>{label}</span></Link>)}</nav>
+      <nav>{links.map(({ href, label, icon: Icon }) => <Link key={href} className={pathname === href || (href !== '/' && pathname?.startsWith(`${href}/`)) ? 'nav-link active' : 'nav-link'} href={href}><Icon size={19}/><span>{label}</span></Link>)}</nav>
       <div className="sidebar-bottom">
         <div className="owner-card"><div className="avatar">{ownerName.slice(0,1).toUpperCase()}</div><div><strong>{ownerName}</strong><span>Преподаватель</span></div></div>
         <Link className="nav-link muted-link" href="/settings"><Settings size={18}/>Настройки</Link>
