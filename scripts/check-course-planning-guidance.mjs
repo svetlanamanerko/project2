@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {
   compactPlanningText,
+  isPlanningGuidanceFolder,
   isPlanningGuidancePath,
   moduleBriefScore,
   moduleNumberFromIntent,
@@ -12,10 +13,14 @@ assert.equal(planningDocumentKind('01 FEDERAL BASELINE — SPOTLIGHT 5'), 'feder
 assert.equal(planningDocumentKind('02 ASSESSMENT MAP — SPOTLIGHT 5'), 'assessment-map');
 assert.equal(planningDocumentKind('03 COURSE PRIORITY MAP — SPOTLIGHT 5'), 'course-priority-map');
 assert.equal(planningDocumentKind('05 MODULE BRIEF — MODULE 1 — SCHOOL DAYS'), 'module-brief');
+assert.equal(planningDocumentKind('Starlight 9 — COURSE MAP 2026-2027'), 'course-map');
 assert.equal(planningDocumentKind('Spotlight 5 — Student Book.pdf'), null);
 
 assert.equal(isPlanningGuidancePath('00 COURSE BASELINE / 01 FEDERAL BASELINE'), true);
 assert.equal(isPlanningGuidancePath('SOURCE / Student Book.pdf'), false);
+assert.equal(isPlanningGuidanceFolder('00 COURSE BASELINE'), true);
+assert.equal(isPlanningGuidanceFolder('01 COURSE MAP'), true);
+assert.equal(isPlanningGuidanceFolder('SOURCE BOOKS'), false);
 assert.equal(moduleNumberFromIntent({ stage: 'Module 1', lesson: 'M1.4 GRAMMAR → SPEAK' }), 1);
 assert.equal(moduleNumberFromIntent({ stage: 'module 1a' }), 1);
 assert.equal(moduleNumberFromIntent({ stage: 'Module 10b' }), 10);
@@ -24,6 +29,12 @@ assert.equal(moduleNumberFromIntent({ topic: 'School' }), null);
 assert.ok(moduleBriefScore('05 MODULE BRIEF — MODULE 1 — SCHOOL DAYS', 1) > moduleBriefScore('05 MODULE BRIEF — MODULE 2 — THAT’S ME', 1));
 assert.equal(moduleBriefScore('04 MODULE BRIEF — TEMPLATE — SPOTLIGHT 5', 1), 0);
 assert.equal(moduleBriefScore('05 MODULE BRIEF — MODULE 1 — SCHOOL DAYS', null), 0);
+
+const starlightMapFixture = `STARLIGHT 9 — COURSE MAP\nРАМКА КУРСА\nMODULE 1 — LIFESTYLES — SB pp. 7–21\n02 — WAYS OF LIVING\n03 — CUSTOMS\nMODULE 2 — EXTREME FACTS — SB pp. 27–41\n07 — EXTREME PEOPLE`;
+const compactCourseMap = compactPlanningText('course-map', starlightMapFixture, 1);
+assert.match(compactCourseMap, /SB pp\. 7–21/);
+assert.match(compactCourseMap, /02 — WAYS OF LIVING/);
+assert.doesNotMatch(compactCourseMap, /EXTREME PEOPLE/);
 
 const priorityFixture = `HEADER\nPRIORITY RULES\nCORE / HOME\nD. MODULE 1 — SCHOOL DAYS — BUDGET 6\nM1 KEEP LIVE CORE\nM1 HOME duplicate drills\nE. MODULE 2 — THAT'S ME — BUDGET 5\nM2 ONLY\nN. FEDERAL GAP MAP — NON-NEGOTIABLE\nFG1 M2–M3\nO. HOME / SKIP DECISION RULE\nend`;
 const compactPriority = compactPlanningText('course-priority-map', priorityFixture, 1);
@@ -55,5 +66,6 @@ const previewSource = fs.readFileSync(new URL('../src/app/(private)/students/[st
 assert.match(previewSource, /Course Baseline/);
 assert.match(previewSource, /Методическая база курса/);
 assert.match(previewSource, /planningGuidance\.moduleBrief/);
+assert.match(previewSource, /planningGuidance\.courseMap/);
 
 console.log('Course planning guidance checks passed.');
