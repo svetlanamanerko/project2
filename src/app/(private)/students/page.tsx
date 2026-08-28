@@ -1,9 +1,9 @@
-import { BookOpenCheck, Plus, UserRound } from 'lucide-react';
+import { BookOpenCheck, Plus, Trash2, UserRound } from 'lucide-react';
 import Link from 'next/link';
 import { dbConfigured } from '@/lib/db';
 import { getCourses, getEnrollments, getStudents } from '@/lib/data';
 import { EmptyState } from '@/components/EmptyState';
-import { addStudent } from '../actions';
+import { addStudent, deleteStudent } from '../actions';
 import { configureStudentCourseWithSchedule } from './actions';
 import { InitialScheduleRows } from './InitialScheduleRows';
 import styles from './students.module.css';
@@ -21,6 +21,7 @@ export default async function StudentsPage({ searchParams }: PageProps<'/student
         {students.length ? <div className="card-list">{students.map((s) => <article className={styles.studentCard} key={s.id}>
           <Link className={styles.studentPrimary} href={`/students/${s.id}`} aria-label={`Открыть карточку ученика ${s.displayName}`}><div className="avatar soft"><UserRound size={20}/></div><div><strong>{s.displayName}</strong><span>{s.schoolGrade ? `${s.schoolGrade} класс` : 'класс не указан'}</span></div></Link>
           <Link className={styles.studentAction} href={`/students/${s.id}`}>Открыть карточку <span aria-hidden="true">→</span></Link>
+          <form action={deleteStudent} className={styles.studentDelete}><input type="hidden" name="studentId" value={s.id}/><button type="submit" title={`Удалить ученика ${s.displayName}`} aria-label={`Удалить ученика ${s.displayName}`}><Trash2 size={15}/></button></form>
         </article>)}</div> : <EmptyState title="Пока никого нет" text="Добавьте первого ученика — полный список заранее знать не нужно."/>}
       </section>
 

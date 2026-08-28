@@ -37,6 +37,18 @@ export async function addStudent(formData: FormData) {
   revalidatePath('/students');
 }
 
+export async function deleteStudent(formData: FormData) {
+  const studentId = String(formData.get('studentId') || '').trim();
+  if (!studentId) return;
+  const sql = requireDb();
+  await sql.begin(async (tx) => {
+    await tx`UPDATE enrollments SET active=false WHERE student_id=${studentId} AND active=true`;
+    await tx`UPDATE students SET active=false WHERE id=${studentId} AND active=true`;
+  });
+  revalidatePath('/students');
+  revalidatePath('/students/progress');
+}
+
 export async function updateStudentContext(formData: FormData) {
   const studentId = String(formData.get('studentId') || '').trim();
   const context = String(formData.get('context') || '').trim();

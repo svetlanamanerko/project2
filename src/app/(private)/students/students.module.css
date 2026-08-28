@@ -9,6 +9,9 @@
 .studentPrimary:focus-visible,.studentAction:focus-visible{outline:none;}
 .studentAction{position:relative;z-index:1;display:inline-flex;align-items:center;gap:5px;flex:0 0 auto;margin-right:13px;padding:8px 10px;border-radius:10px;color:#5e53df;font-size:12px;font-weight:800;}
 .studentAction:hover{background:#f2efff;}
+.studentDelete{position:relative;z-index:1;margin-right:10px;}
+.studentDelete button{display:grid;place-items:center;width:34px;height:34px;border:1px solid #eadfe8;border-radius:10px;background:#fff;color:#a05b6c;cursor:pointer;}
+.studentDelete button:hover{background:#fff4f6;border-color:#e4c4cc;}
 .setupGrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px 18px;align-items:end;}
 .setupGrid label{display:grid;gap:7px;font-size:12px;font-weight:750;color:#17224a;min-width:0;}
 .setupGrid input,.setupGrid select,.setupGrid textarea{border:1px solid #dfe2f0;background:#fcfcff;border-radius:13px;padding:12px 13px;color:#17224a;outline:none;width:100%;min-height:46px;}
@@ -39,4 +42,4 @@
 .routeChip{display:inline-flex;align-items:center;gap:8px;padding:10px 13px;border:1px solid #e5e7f3;border-radius:999px;background:linear-gradient(90deg,#fff,#faf8ff);font-size:12px;color:#526080;}
 .routeChip strong{color:#17224a;}
 @media(max-width:1100px){.setupGrid{grid-template-columns:repeat(2,minmax(0,1fr));}.wideField{grid-column:span 1;}.note{grid-column:1/-1;}.submit{grid-column:1/-1;}}
-@media(max-width:640px){.studentCard{align-items:stretch;flex-direction:column;gap:0;}.studentAction{align-self:flex-start;margin:0 13px 12px;}.setupGrid{grid-template-columns:1fr;}.wideField,.note,.submit{grid-column:auto;}.submit{width:100%;}.scheduleEditorHead{align-items:flex-start;flex-direction:column;}.scheduleAdd{width:100%;justify-content:center;}.scheduleRow{grid-template-columns:1fr;}.scheduleRemove{justify-self:start;width:46px;}.routeChip{border-radius:16px;}}
+@media(max-width:640px){.studentCard{align-items:stretch;flex-direction:column;gap:0;}.studentAction{align-self:flex-start;margin:0 13px 8px;}.studentDelete{position:absolute;right:0;bottom:8px;}.setupGrid{grid-template-columns:1fr;}.wideField,.note,.submit{grid-column:auto;}.submit{width:100%;}.scheduleEditorHead{align-items:flex-start;flex-direction:column;}.scheduleAdd{width:100%;justify-content:center;}.scheduleRow{grid-template-columns:1fr;}.scheduleRemove{justify-self:start;width:46px;}.routeChip{border-radius:16px;}}
