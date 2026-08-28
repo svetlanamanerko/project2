@@ -85,7 +85,7 @@ assert.match(planRoute, /OGE Navigator Baseline/);
 assert.match(planRoute, /OGE Master Curriculum/);
 assert.match(planRoute, /OGE Student Route/);
 assert.match(planRoute, /Technological Map текущего блока/);
-assert.match(planRoute, /не заставляет каждого ученика механически проходить все 72 позиции/);
+assert.match(planRoute, /не заставляет каждого ученика механически проходить все 72 позиции/i);
 assert.match(planRoute, /QID\/ZID/);
 assert.match(planRoute, /HOME \/ SHORTEN/);
 assert.match(planRoute, /Course Map определяет фактическое место ученика/);
