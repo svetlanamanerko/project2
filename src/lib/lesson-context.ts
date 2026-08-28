@@ -108,13 +108,21 @@ export async function buildLessonContext(studentId: string, options?: { enrollme
     ? planningResult.value
     : {
       available: false,
+      mode: 'textbook' as const,
       module: null,
+      ogeBlock: null,
       hierarchy: [],
       federalBaseline: null,
       assessmentMap: null,
       coursePriorityMap: null,
       courseMap: null,
       moduleBrief: null,
+      ogeNavigatorBaseline: null,
+      ogeMasterCurriculum: null,
+      ogeStudentRoute: null,
+      ogeCoverageAudit: null,
+      ogeBankCompletion: null,
+      ogeTechnologicalMap: null,
     };
   if (planningResult.status === 'rejected') {
     console.error('[lesson-context] Course planning baseline unavailable:', errorMessage(planningResult.reason));
