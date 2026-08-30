@@ -35,4 +35,29 @@ const learning = fs.readFileSync(new URL('../src/lib/student-learning-context.ts
 assert.match(learning, /sp\.module, sp\.topic, sp\.note/);
 assert.match(learning, /LEFT JOIN school_positions sp/);
 
+const dashboard = fs.readFileSync(new URL('../src/app/(private)/page.tsx', import.meta.url), 'utf8');
+assert.match(dashboard, /DashboardCalendar/);
+assert.match(dashboard, /params\.date/);
+assert.match(dashboard, /scheduledDate=\{targetDate\}/);
+assert.match(dashboard, /Можно готовить уроки из списка ниже/);
+
+const calendar = fs.readFileSync(new URL('../src/app/(private)/DashboardCalendar.tsx', import.meta.url), 'utf8');
+assert.match(calendar, /Показать уроки на дату/);
+assert.match(calendar, /Можно открыть любой будущий день и подготовить уроки заранее/);
+assert.match(calendar, /type="date"/);
+
+const dashboardPlanButton = fs.readFileSync(new URL('../src/app/(private)/LessonPlanButton.tsx', import.meta.url), 'utf8');
+assert.match(dashboardPlanButton, /scheduledDate\?: string/);
+assert.match(dashboardPlanButton, /JSON\.stringify\(\{ enrollmentId, scheduledTime, scheduledDate \}\)/);
+
+const planRoute = fs.readFileSync(new URL('../src/app/api/kie/lesson-plan/route.ts', import.meta.url), 'utf8');
+assert.match(planRoute, /scheduledDate\?: string/);
+assert.match(planRoute, /normalizeScheduledDate\(body\.scheduledDate\)/);
+assert.match(planRoute, /scheduled_date=\$\{scheduledDate\}/);
+
+const packageRoute = fs.readFileSync(new URL('../src/app/api/kie/lesson-package/route.ts', import.meta.url), 'utf8');
+assert.match(packageRoute, /scheduledDate\?: string/);
+assert.match(packageRoute, /normalizeScheduledDate\(body\.scheduledDate\)/);
+assert.match(packageRoute, /scheduled_date=\$\{date\}/);
+
 console.log('Conversational lesson preparation checks passed.');
