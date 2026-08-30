@@ -39,7 +39,7 @@ const dashboard = fs.readFileSync(new URL('../src/app/(private)/page.tsx', impor
 assert.match(dashboard, /DashboardCalendar/);
 assert.match(dashboard, /params\.date/);
 assert.match(dashboard, /scheduledDate=\{targetDate\}/);
-assert.match(dashboard, /Можно готовить уроки из списка ниже/);
+assert.match(dashboard, /На будущую дату можно готовить любой урок прямо из списка ниже/);
 
 const calendar = fs.readFileSync(new URL('../src/app/(private)/DashboardCalendar.tsx', import.meta.url), 'utf8');
 assert.match(calendar, /Показать уроки на дату/);
