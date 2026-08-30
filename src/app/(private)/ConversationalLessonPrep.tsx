@@ -58,10 +58,24 @@ export function ConversationalLessonPrep({
     if (!response.ok || !data.ok) throw new Error(data.message || 'Не удалось сохранить пожелание к уроку.');
   }
 
-  async function preparePlan() {
+  async function requestPackage() {
+    const response = await fetch('/api/kie/lesson-package', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enrollmentId }),
+    });
+    const data = await response.json() as PackageResponse;
+    if (!response.ok || !data.ok || !data.package) throw new Error(data.message || 'Не удалось собрать материалы урока.');
+    setLessonPackage(data.package);
+    setPackageCredits(data.credits ?? null);
+    setWarning(data.warning || '');
+  }
+
+  async function prepareEverything() {
     setLoadingPlan(true);
     setError('');
     setWarning('');
+    setLessonPackage(null);
     try {
       await saveInstruction();
       const response = await fetch('/api/kie/lesson-plan', {
@@ -73,11 +87,14 @@ export function ConversationalLessonPrep({
       if (!response.ok || !data.ok || !data.plan) throw new Error(data.message || 'Не удалось подготовить план урока.');
       setPlan(data.plan);
       setPlanCredits(data.credits ?? null);
-      setLessonPackage(null);
+      setLoadingPlan(false);
+      setLoadingPackage(true);
+      await requestPackage();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Не удалось подготовить урок.');
     } finally {
       setLoadingPlan(false);
+      setLoadingPackage(false);
     }
   }
 
@@ -87,16 +104,7 @@ export function ConversationalLessonPrep({
     setWarning('');
     try {
       await saveInstruction();
-      const response = await fetch('/api/kie/lesson-package', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enrollmentId }),
-      });
-      const data = await response.json() as PackageResponse;
-      if (!response.ok || !data.ok || !data.package) throw new Error(data.message || 'Не удалось собрать материалы урока.');
-      setLessonPackage(data.package);
-      setPackageCredits(data.credits ?? null);
-      setWarning(data.warning || '');
+      await requestPackage();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Не удалось собрать материалы урока.');
     } finally {
@@ -109,7 +117,7 @@ export function ConversationalLessonPrep({
       <div className={styles.icon}><MessageCircleMore size={22}/></div>
       <div>
         <h2>Что нужно сегодня?</h2>
-        <p>Пиши обычными словами, как мне в чате. Всё остальное Мастерская подхватит сама.</p>
+        <p>Пиши обычными словами, как мне в чате. Мастерская сама найдёт маршрут, материалы и соберёт урок.</p>
       </div>
     </div>
 
@@ -118,7 +126,7 @@ export function ConversationalLessonPrep({
       value={instruction}
       onChange={(event) => setInstruction(event.target.value)}
       rows={4}
-      placeholder="Например: продолжаем по плану, но сегодня ещё повторить Past Simple и дать 10 минут speaking. Домашку сделать короче."
+      placeholder="Например: диагностику уже провели. Начинаем с блока 1. Базу нужно прорабатывать тщательно: больше лексики, грамматики и speaking."
     />
 
     <div className={styles.chips}>
@@ -127,11 +135,11 @@ export function ConversationalLessonPrep({
     </div>
 
     <div className={styles.actions}>
-      <button className="button primary" type="button" onClick={preparePlan} disabled={loadingPlan || loadingPackage}>
-        <Sparkles size={17}/>{loadingPlan ? 'Готовлю…' : plan ? 'Обновить план' : 'Подготовить урок'}
+      <button className="button primary" type="button" onClick={prepareEverything} disabled={loadingPlan || loadingPackage}>
+        <Sparkles size={17}/>{loadingPlan ? 'Составляю план…' : loadingPackage ? 'Собираю материалы…' : lessonPackage ? 'Обновить всё' : 'Подготовить урок'}
       </button>
       {plan && <button className={`button ${styles.secondary}`} type="button" onClick={assemblePackage} disabled={loadingPackage || loadingPlan}>
-        <WandSparkles size={17}/>{loadingPackage ? 'Собираю материалы…' : lessonPackage ? 'Пересобрать материалы' : 'Собрать материалы'}
+        <WandSparkles size={17}/>{loadingPackage ? 'Собираю…' : lessonPackage ? 'Пересобрать материалы' : 'Повторить сборку материалов'}
       </button>}
     </div>
 
