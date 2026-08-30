@@ -68,9 +68,9 @@ export function ogeLessonNumberFromIntent(intent: Record<string, unknown>): numb
 
 export function ogeBlockNumberFromIntent(intent: Record<string, unknown>): number | null {
   for (const value of stringsFromIntent(intent)) {
-    const afterWord = value.match(/\b(?:block|блок(?:а|е|у|ом)?)\s*0?(\d{1,2})\b/i);
+    const afterWord = value.match(/(?:^|[\s,.;:()])(?:block|блок(?:а|е|у|ом)?)\s*0?(\d{1,2})(?=$|[\s,.;:()!?])/i);
     if (afterWord) return Number(afterWord[1]);
-    const beforeWord = value.match(/\b0?(\d{1,2})\s*(?:-?й\s*)?блок(?:а|е|у|ом)?\b/i);
+    const beforeWord = value.match(/(?:^|[\s,.;:()])0?(\d{1,2})\s*(?:-?й\s*)?блок(?:а|е|у|ом)?(?=$|[\s,.;:()!?])/i);
     if (beforeWord) return Number(beforeWord[1]);
   }
   const lesson = ogeLessonNumberFromIntent(intent);
