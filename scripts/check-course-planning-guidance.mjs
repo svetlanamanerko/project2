@@ -98,4 +98,11 @@ assert.match(previewSource, /planningGuidance\.ogeTechnologicalMap/);
 assert.match(previewSource, /planningGuidance\.moduleBrief/);
 assert.match(previewSource, /planningGuidance\.courseMap/);
 
+const coursePageSource = fs.readFileSync(new URL('../src/app/(private)/courses/[courseId]/page.tsx', import.meta.url), 'utf8');
+assert.match(coursePageSource, /Что здесь нужно сделать\?/);
+assert.match(coursePageSource, /Ручное добавление этапа/);
+assert.match(coursePageSource, /Для ОГЭ вручную заполнять 72 шага здесь не нужно/);
+assert.match(coursePageSource, /Подключить эту папку/);
+assert.match(coursePageSource, /CourseHelpPopover/);
+
 console.log('Course planning guidance checks passed.');
