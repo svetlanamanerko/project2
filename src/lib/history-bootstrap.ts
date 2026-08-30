@@ -27,25 +27,48 @@ export type HistoryBootstrapRunView = {
   error: string | null;
 };
 
+function normalizeStoredAnalysis(value: unknown): HistoryBootstrapAnalysis | null {
+  if (!value) return null;
+  try {
+    const text = typeof value === 'string' ? value : JSON.stringify(value);
+    return parseHistoryBootstrapAnalysis(text);
+  } catch {
+    return null;
+  }
+}
+
 export async function getStudentHistoryBootstrapView(studentId: string) {
   const sql = db();
-  const [coverage, runs] = await Promise.all([
-    sql<HistoricalCoverageView[]>`
-      SELECT h.id, h.enrollment_id as "enrollmentId", h.status, h.stage_label as stage,
-             h.lesson_label as lesson, h.topic, h.coverage_summary as summary, h.confidence,
-             h.source_refs as "sourceRefs", h.details, h.teacher_note as "teacherNote"
-      FROM historical_coverage h JOIN enrollments e ON e.id=h.enrollment_id
-      WHERE e.student_id=${studentId} ORDER BY h.updated_at DESC LIMIT 100
-    `,
-    sql<Array<Omit<HistoryBootstrapRunView, 'analysis'> & { analysis: unknown }>>`
-      SELECT DISTINCT ON (r.enrollment_id) r.id, r.enrollment_id as "enrollmentId", r.status,
-             r.analysis, r.error_message as error
-      FROM history_bootstrap_runs r JOIN enrollments e ON e.id=r.enrollment_id
-      WHERE e.student_id=${studentId}
-      ORDER BY r.enrollment_id, r.updated_at DESC
-    `,
-  ]);
-  return { coverage, runs: runs.map((run) => ({ ...run, analysis: run.analysis as HistoryBootstrapAnalysis | null })) };
+  try {
+    const [coverage, runs] = await Promise.all([
+      sql<Array<Omit<HistoricalCoverageView, 'confidence' | 'sourceRefs' | 'details'> & { confidence: unknown; sourceRefs: unknown; details: unknown }>>`
+        SELECT h.id, h.enrollment_id as "enrollmentId", h.status, h.stage_label as stage,
+               h.lesson_label as lesson, h.topic, h.coverage_summary as summary, h.confidence,
+               h.source_refs as "sourceRefs", h.details, h.teacher_note as "teacherNote"
+        FROM historical_coverage h JOIN enrollments e ON e.id=h.enrollment_id
+        WHERE e.student_id=${studentId} ORDER BY h.updated_at DESC LIMIT 100
+      `,
+      sql<Array<Omit<HistoryBootstrapRunView, 'analysis'> & { analysis: unknown }>>`
+        SELECT DISTINCT ON (r.enrollment_id) r.id, r.enrollment_id as "enrollmentId", r.status,
+               r.analysis, r.error_message as error
+        FROM history_bootstrap_runs r JOIN enrollments e ON e.id=r.enrollment_id
+        WHERE e.student_id=${studentId}
+        ORDER BY r.enrollment_id, r.updated_at DESC
+      `,
+    ]);
+
+    const safeCoverage: HistoricalCoverageView[] = coverage.map((item) => ({
+      ...item,
+      confidence: ['high', 'medium', 'low'].includes(String(item.confidence)) ? item.confidence as HistoricalCoverageView['confidence'] : 'low',
+      sourceRefs: Array.isArray(item.sourceRefs) ? item.sourceRefs as HistorySourceRef[] : [],
+      details: item.details && typeof item.details === 'object' && !Array.isArray(item.details) ? item.details as Record<string, unknown> : {},
+    }));
+    const safeRuns: HistoryBootstrapRunView[] = runs.map((run) => ({ ...run, analysis: normalizeStoredAnalysis(run.analysis) }));
+    return { coverage: safeCoverage, runs: safeRuns };
+  } catch (error) {
+    console.error('[history-bootstrap] Student history view unavailable:', error);
+    return { coverage: [] as HistoricalCoverageView[], runs: [] as HistoryBootstrapRunView[] };
+  }
 }
 
 export async function runHistoryBootstrap(studentId: string, enrollmentId: string) {
