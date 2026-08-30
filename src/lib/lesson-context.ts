@@ -5,6 +5,8 @@ import { getRelevantCourseMaterials } from '@/lib/relevant-course-materials';
 import { getCoursePlanningGuidance } from '@/lib/course-planning-guidance';
 import { getOgeCandidatesForStudent } from '@/lib/oge-navigator-client';
 import { isDiagnosticIntent, resolveCurrentAndNext } from '@/lib/learning-context-utils';
+import { isOgeCourseTitle } from '@/lib/course-folder-match-utils';
+import { resolveGoogleDriveCourseFolder } from '@/lib/google-drive-source-folders';
 
 const EXTERNAL_CONTEXT_TIMEOUT_MS = 9_000;
 
@@ -57,11 +59,23 @@ export async function buildLessonContext(studentId: string, options?: { enrollme
     nextSteps: studentProgress.nextSteps.join('; '),
   };
   const diagnosticMode = isDiagnosticIntent(lessonIntent);
+  const isOge = isOgeCourseTitle(course.title);
+
+  let effectiveCourseFolderId = course.driveFolderId;
+  if (isOge) {
+    try {
+      const resolved = await resolveGoogleDriveCourseFolder(course.title, course.driveFolderId);
+      effectiveCourseFolderId = resolved.folder?.id || course.driveFolderId;
+    } catch (error) {
+      console.warn('[lesson-context] Не удалось автоматически определить OGE MASTER:', errorMessage(error));
+    }
+  }
 
   const driveController = new AbortController();
   const drivePromise = withTimeout(
     getRelevantCourseMaterials({
       courseId: course.courseId,
+      courseFolderId: effectiveCourseFolderId,
       studentId,
       lessonIntent,
       usedMaterialIds: studentProgress.usedMaterialsByEnrollment[course.enrollmentId] || [],
@@ -75,7 +89,7 @@ export async function buildLessonContext(studentId: string, options?: { enrollme
   const planningController = new AbortController();
   const planningPromise = withTimeout(
     getCoursePlanningGuidance({
-      courseFolderId: course.driveFolderId,
+      courseFolderId: effectiveCourseFolderId,
       lessonIntent,
       signal: planningController.signal,
     }),
@@ -84,7 +98,6 @@ export async function buildLessonContext(studentId: string, options?: { enrollme
   );
 
   const navigatorConfigured = Boolean(process.env.OGE_NAVIGATOR_BASE_URL);
-  const isOge = /\b(oge|огэ)\b/i.test(course.title);
   const navigatorPromise = withTimeout(
     isOge
       ? getOgeCandidatesForStudent(studentProgress.usedQids, { ...lessonIntent, diagnosticMode })

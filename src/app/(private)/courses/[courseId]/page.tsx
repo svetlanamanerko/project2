@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getCourseDetails, getCourseMapItems } from '@/lib/data';
 import { getGoogleDriveSourceFolders } from '@/lib/google-drive-source-folders';
+import { courseFolderMatchScore, isOgeCourseTitle } from '@/lib/course-folder-match-utils';
 import { getCourseMethodology } from '@/lib/course-profile';
 import { addCourseMapItem, updateCourse, updateCourseMethodology, updateCourseSource } from '../../actions';
 import { CourseDeleteButton } from '../CourseDeleteButton';
@@ -13,28 +14,6 @@ function formatLessonDate(date: string | null) {
   if (!date) return 'без даты';
   return new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })
     .format(new Date(`${date}T12:00:00Z`));
-}
-
-function normalizeName(value: string) {
-  return value.toLocaleLowerCase('ru-RU').replace(/[—–_]+/g, ' ').replace(/\s+/g, ' ').trim();
-}
-
-function folderMatchScore(courseTitle: string, folderName: string) {
-  const title = normalizeName(courseTitle);
-  const folder = normalizeName(folderName);
-  const isOge = /(^|\s)(oge|огэ)(\s|$)/i.test(title);
-  if (isOge) {
-    if (!/(^|\s)(oge|огэ)(\s|$)/i.test(folder)) return 0;
-    return 100 + (folder.includes('master') ? 20 : 0);
-  }
-
-  let score = 0;
-  for (const series of ['spotlight', 'starlight']) {
-    if (title.includes(series) && folder.includes(series)) score += 70;
-  }
-  const grade = title.match(/\b(1[01]|[1-9])\b/)?.[1];
-  if (grade && new RegExp(`(^|\\D)${grade}(\\D|$)`).test(folder)) score += 35;
-  return score;
 }
 
 export default async function CoursePage({ params, searchParams }: PageProps<'/courses/[courseId]'>) {
@@ -51,11 +30,12 @@ export default async function CoursePage({ params, searchParams }: PageProps<'/c
   }
   const sourceFolder = drive.folders.find((folder) => folder.id === course.driveFolderId) || null;
   const methodology = getCourseMethodology(course.courseProfile);
-  const isOge = /(^|\s)(oge|огэ)(\s|$)/i.test(normalizeName(course.title));
+  const isOge = isOgeCourseTitle(course.title);
   const recommendedFolder = sourceFolder ? null : drive.folders
-    .map((folder) => ({ folder, score: folderMatchScore(course.title, folder.name) }))
+    .map((folder) => ({ folder, score: courseFolderMatchScore(course.title, folder.name) }))
     .filter((item) => item.score >= 50)
     .sort((a, b) => b.score - a.score)[0]?.folder || null;
+  const effectiveSourceFolder = sourceFolder || (isOge ? recommendedFolder : null);
 
   const mapHelpText = isOge
     ? 'Для ОГЭ этот список не нужно забивать вручную целиком. Master Curriculum и технологические карты живут на Google Drive. Ручной этап нужен только если ты специально хочешь добавить или поправить один шаг маршрута внутри сайта.'
@@ -69,7 +49,7 @@ export default async function CoursePage({ params, searchParams }: PageProps<'/c
         <div><p className="eyebrow">Карточка курса</p><h1>{course.title}</h1><p className="muted">{course.grade ? `${course.grade} класс` : 'Класс не указан'}{course.publisher ? ` · ${course.publisher}` : ''}</p></div>
       </div>
       <div className={styles.actions}>
-        <a className={`button ${styles.secondaryButton}`} href="#source"><FolderOpen size={17}/>Настроить источник</a>
+        {!isOge && <a className={`button ${styles.secondaryButton}`} href="#source"><FolderOpen size={17}/>Настроить источник</a>}
         <a className={`button ${styles.secondaryButton}`} href="#edit"><Pencil size={17}/>Редактировать курс</a>
         <Link className="button primary" href={`/?course=${courseId}`}><Sparkles size={17}/>Подготовить урок</Link>
       </div>
@@ -84,13 +64,13 @@ export default async function CoursePage({ params, searchParams }: PageProps<'/c
         <CourseHelpPopover
           title="Карточка курса"
           text="Здесь хранится не сам урок, а настройки курса. Большую часть данных Мастерская берёт из Google Drive и карточки ученика. Непонятные технические поля можно вообще не трогать, пока они не понадобятся."
-          examples={isOge ? ['1. Подключить 02 OGE MASTER', '2. У ученика указать текущий блок', '3. Нажать «Подготовить урок»'] : ['1. Подключить папку Spotlight / Starlight', '2. У ученика указать текущую тему', '3. Нажать «Подготовить урок»']}
+          examples={isOge ? ['1. OGE MASTER подключается автоматически', '2. У ученика указать текущий блок', '3. Нажать «Подготовить урок»'] : ['1. Подключить папку Spotlight / Starlight', '2. У ученика указать текущую тему', '3. Нажать «Подготовить урок»']}
         />
       </div>
       <div className={styles.setupSteps}>
-        <div className={`${styles.setupStep} ${sourceFolder ? styles.stepDone : styles.stepActive}`}>
-          <span>{sourceFolder ? <CheckCircle2 size={18}/> : '1'}</span>
-          <div><strong>Google Drive</strong><small>{sourceFolder ? `Подключено: ${sourceFolder.name}` : 'Сначала подключи папку курса'}</small></div>
+        <div className={`${styles.setupStep} ${effectiveSourceFolder ? styles.stepDone : styles.stepActive}`}>
+          <span>{effectiveSourceFolder ? <CheckCircle2 size={18}/> : '1'}</span>
+          <div><strong>Google Drive</strong><small>{effectiveSourceFolder ? `${isOge && !sourceFolder ? 'Автоматически: ' : 'Подключено: '}${effectiveSourceFolder.name}` : isOge ? 'OGE MASTER не найден' : 'Сначала подключи папку курса'}</small></div>
         </div>
         <div className={`${styles.setupStep} ${styles.stepNeutral}`}>
           <span>2</span>
@@ -119,7 +99,7 @@ export default async function CoursePage({ params, searchParams }: PageProps<'/c
 
       <section className={`panel ${styles.editPanel}`} id="course-map">
         <div className="panel-title"><div className={styles.titleWithHelp}><div><h2>Маршрут курса <span className={styles.technicalLabel}>Course Map</span></h2><p className="muted small">Показывает порядок этапов и помогает определить CURRENT → NEXT.</p></div><CourseHelpPopover title="Маршрут курса" text={mapHelpText} examples={isOge ? ['Block 3 → Lesson 17 → Why We Travel'] : ['Module 1 → 1a → School Days']}/></div><span className="count-badge">{courseMap.length}</span></div>
-        {courseMap.length ? <div className={styles.lessonList}>{courseMap.map((item) => <article key={item.id}><div><strong>{item.stage}{item.lesson ? ` / ${item.lesson}` : ''} — {item.title}</strong><span>Шаг {item.position}</span></div></article>)}</div> : <div className={styles.emptyMap}><strong>{isOge ? 'Для ОГЭ вручную заполнять 72 шага здесь не нужно.' : 'Внутренний маршрут пока пуст.'}</strong><span>{isOge ? 'Подключи папку OGE MASTER — Master Curriculum будет использоваться при планировании. Этот блок оставляем для редких ручных поправок.' : 'Это не мешает планировать по текущей теме ученика. Маршрут нужен, если хочешь автоматический переход CURRENT → NEXT внутри сайта.'}</span></div>}
+        {courseMap.length ? <div className={styles.lessonList}>{courseMap.map((item) => <article key={item.id}><div><strong>{item.stage}{item.lesson ? ` / ${item.lesson}` : ''} — {item.title}</strong><span>Шаг {item.position}</span></div></article>)}</div> : <div className={styles.emptyMap}><strong>{isOge ? 'Для ОГЭ вручную заполнять 72 шага здесь не нужно.' : 'Внутренний маршрут пока пуст.'}</strong><span>{isOge ? 'OGE MASTER подключается автоматически. Master Curriculum используется при планировании, а этот блок оставляем только для редких ручных поправок.' : 'Это не мешает планировать по текущей теме ученика. Маршрут нужен, если хочешь автоматический переход CURRENT → NEXT внутри сайта.'}</span></div>}
         <details className={`${styles.sourcePicker} ${styles.manualMapEditor}`}>
           <summary>Ручное добавление этапа <span>обычно не нужно</span></summary>
           <form action={addCourseMapItem}>
@@ -136,23 +116,27 @@ export default async function CoursePage({ params, searchParams }: PageProps<'/c
       </section>
 
       <section className={`panel ${styles.sourcePanel}`} id="source">
-        <div className="panel-title"><div className={styles.titleWithHelp}><h2><FolderOpen size={18}/>Google Drive</h2><CourseHelpPopover title="Google Drive" text="Здесь выбирается одна главная папка курса. Мастерская читает все нужные подпапки внутри неё: учебники, Course Baseline, Module Brief, OGE Master Curriculum и готовые материалы." examples={isOge ? ['Для этого курса: 02 OGE MASTER'] : [`Папка с материалами ${course.title}`]}/></div><span className={`status ${sourceFolder ? 'status-prepared' : 'status-draft'}`}>{sourceFolder ? 'Подключено' : 'Не подключено'}</span></div>
-        {drive.libraryRoot && <div className={styles.connectedSource}><div><span>Библиотека:</span><strong>{drive.libraryRoot.name}</strong><span>Папка курса:</span><strong>{sourceFolder?.name || 'Не выбрана'}</strong>{sourceFolder && <span>Сайт читает все материалы внутри этой папки и её подпапок.</span>}</div>{sourceFolder?.webViewLink && <a href={sourceFolder.webViewLink} target="_blank" rel="noreferrer">Открыть папку курса в Drive</a>}</div>}
-        {course.driveFolderId && !sourceFolder ? <div className="notice warning">Сохранённая папка недоступна или больше не находится непосредственно внутри общей библиотеки. Выберите папку курса ниже.</div> : !sourceFolder && <p className="muted small">Сначала подключите папку курса. Остальные материалы внутри неё Мастерская найдёт сама.</p>}
+        <div className="panel-title"><div className={styles.titleWithHelp}><h2><FolderOpen size={18}/>Google Drive</h2><CourseHelpPopover title="Google Drive" text={isOge ? 'Для курса ОГЭ отдельную папку выбирать не нужно: Мастерская сама использует общую папку OGE MASTER.' : 'Здесь выбирается одна главная папка курса. Мастерская читает все нужные подпапки внутри неё: учебники, Course Baseline, Module Brief и готовые материалы.'} examples={isOge ? ['02 OGE MASTER — общий источник ОГЭ'] : [`Папка с материалами ${course.title}`]}/></div><span className={`status ${effectiveSourceFolder ? 'status-prepared' : 'status-draft'}`}>{effectiveSourceFolder ? isOge && !sourceFolder ? 'Автоматически' : 'Подключено' : 'Не найдено'}</span></div>
+        {isOge ? <>
+          {effectiveSourceFolder ? <div className={styles.connectedSource}><div><span>Источник ОГЭ:</span><strong>{effectiveSourceFolder.name}</strong><span>Отдельно привязывать папку к этому курсу не нужно. Планирование, материалы и история используют OGE MASTER автоматически.</span></div>{effectiveSourceFolder.webViewLink && <a href={effectiveSourceFolder.webViewLink} target="_blank" rel="noreferrer">Открыть OGE MASTER в Drive</a>}</div> : <div className="notice warning">Не удалось автоматически найти OGE MASTER внутри библиотеки. Проверь подключение Google Drive в Настройках.</div>}
+        </> : <>
+          {drive.libraryRoot && <div className={styles.connectedSource}><div><span>Библиотека:</span><strong>{drive.libraryRoot.name}</strong><span>Папка курса:</span><strong>{sourceFolder?.name || 'Не выбрана'}</strong>{sourceFolder && <span>Сайт читает все материалы внутри этой папки и её подпапок.</span>}</div>{sourceFolder?.webViewLink && <a href={sourceFolder.webViewLink} target="_blank" rel="noreferrer">Открыть папку курса в Drive</a>}</div>}
+          {course.driveFolderId && !sourceFolder ? <div className="notice warning">Сохранённая папка недоступна или больше не находится непосредственно внутри общей библиотеки. Выберите папку курса ниже.</div> : !sourceFolder && <p className="muted small">Сначала подключите папку курса. Остальные материалы внутри неё Мастерская найдёт сама.</p>}
 
-        {!sourceFolder && recommendedFolder && <div className={styles.folderRecommendation}>
-          <div><span>Мастерская нашла вероятное совпадение</span><strong>{recommendedFolder.name}</strong><small>Если это нужный курс, просто нажми кнопку — искать в списке не надо.</small></div>
-          <form action={updateCourseSource}><input type="hidden" name="courseId" value={courseId}/><input type="hidden" name="folderId" value={recommendedFolder.id}/><button className="button primary" type="submit">Подключить эту папку</button></form>
-        </div>}
+          {!sourceFolder && recommendedFolder && <div className={styles.folderRecommendation}>
+            <div><span>Мастерская нашла вероятное совпадение</span><strong>{recommendedFolder.name}</strong><small>Если это нужный курс, просто нажми кнопку — искать в списке не надо.</small></div>
+            <form action={updateCourseSource}><input type="hidden" name="courseId" value={courseId}/><input type="hidden" name="folderId" value={recommendedFolder.id}/><button className="button primary" type="submit">Подключить эту папку</button></form>
+          </div>}
 
-        {!drive.connected ? <div className={styles.sourceAction}><p className="muted small">Сначала подключите существующую интеграцию Google Drive.</p><Link className="button primary" href="/settings">Перейти в настройки</Link></div> : drive.error ? <div className="notice warning">Google Drive подключён, но список папок сейчас недоступен. Попробуйте обновить страницу.</div> : drive.folders.length ? <details className={styles.sourcePicker} open={!course.driveFolderId || !sourceFolder}>
-          <summary>{course.driveFolderId ? 'Изменить папку курса' : 'Выбрать другую папку'}</summary>
-          <form action={updateCourseSource}>
-            <input type="hidden" name="courseId" value={courseId}/>
-            <label>Папка курса<select name="folderId" required defaultValue={sourceFolder?.id || recommendedFolder?.id || ''}><option value="" disabled>Выберите папку внутри библиотеки</option>{drive.folders.map((folder) => <option value={folder.id} key={folder.id}>{folder.name}</option>)}</select></label>
-            <button className="button primary" type="submit">Сохранить папку курса</button>
-          </form>
-        </details> : <p className="muted small">В общей библиотеке пока нет доступных папок курсов.</p>}
+          {!drive.connected ? <div className={styles.sourceAction}><p className="muted small">Сначала подключите существующую интеграцию Google Drive.</p><Link className="button primary" href="/settings">Перейти в настройки</Link></div> : drive.error ? <div className="notice warning">Google Drive подключён, но список папок сейчас недоступен. Попробуйте обновить страницу.</div> : drive.folders.length ? <details className={styles.sourcePicker} open={!course.driveFolderId || !sourceFolder}>
+            <summary>{course.driveFolderId ? 'Изменить папку курса' : 'Выбрать другую папку'}</summary>
+            <form action={updateCourseSource}>
+              <input type="hidden" name="courseId" value={courseId}/>
+              <label>Папка курса<select name="folderId" required defaultValue={sourceFolder?.id || recommendedFolder?.id || ''}><option value="" disabled>Выберите папку внутри библиотеки</option>{drive.folders.map((folder) => <option value={folder.id} key={folder.id}>{folder.name}</option>)}</select></label>
+              <button className="button primary" type="submit">Сохранить папку курса</button>
+            </form>
+          </details> : <p className="muted small">В общей библиотеке пока нет доступных папок курсов.</p>}
+        </>}
       </section>
 
       <section className="panel">
