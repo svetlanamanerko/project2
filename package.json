@@ -15,6 +15,7 @@
     "test:communicative-core": "node --experimental-strip-types scripts/check-communicative-core.mjs",
     "test:course-planning-guidance": "node --experimental-strip-types scripts/check-course-planning-guidance.mjs",
     "test:source-resolution": "node --experimental-strip-types scripts/check-source-resolution.mjs",
+    "test:conversational-prep": "node --experimental-strip-types scripts/check-conversational-lesson-prep.mjs",
     "start": "next start -H 0.0.0.0 -p ${PORT:-3000}",
     "migrate": "node scripts/migrate.mjs"
   },
