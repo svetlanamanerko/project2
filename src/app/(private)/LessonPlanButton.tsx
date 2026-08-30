@@ -82,12 +82,14 @@ export function LessonPlanButton({
   initialPlan,
   initialPackage,
   scheduledTime,
+  scheduledDate,
 }: {
   enrollmentId: string;
   lessonId?: string | null;
   initialPlan?: string | null;
   initialPackage?: LessonPackage | null;
   scheduledTime?: string | null;
+  scheduledDate?: string | null;
 }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -118,7 +120,7 @@ export function LessonPlanButton({
       const response = await fetch('/api/kie/lesson-plan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enrollmentId, scheduledTime }),
+        body: JSON.stringify({ enrollmentId, scheduledTime, scheduledDate }),
       });
       const data = await response.json() as PlanResponse;
       if (!response.ok || !data.ok || !data.plan) {
@@ -146,7 +148,7 @@ export function LessonPlanButton({
       const response = await fetch('/api/kie/lesson-package', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enrollmentId, scheduledTime }),
+        body: JSON.stringify({ enrollmentId, scheduledTime, scheduledDate }),
       });
       const data = await response.json() as PackageResponse;
       if (!response.ok || !data.ok || !data.package) {

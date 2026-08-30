@@ -27,6 +27,13 @@ function todayString() {
   return new Intl.DateTimeFormat('sv-SE', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 }
 
+function normalizeScheduledDate(value: unknown) {
+  const raw = String(value || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return todayString();
+  const parsed = new Date(`${raw}T12:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === raw ? raw : todayString();
+}
+
 function extractTextCandidates(payload: unknown) {
   const result: string[] = [];
   if (!payload || typeof payload !== 'object') return result;
@@ -122,15 +129,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, message: 'KIE_API_KEY не найден.' }, { status: 503 });
   }
 
-  const body = await request.json().catch(() => ({})) as { enrollmentId?: string; scheduledTime?: string };
+  const body = await request.json().catch(() => ({})) as { enrollmentId?: string; scheduledTime?: string; scheduledDate?: string };
   const enrollmentId = String(body.enrollmentId || '').trim();
   const scheduledTime = /^\d{2}:\d{2}$/.test(String(body.scheduledTime || '')) ? String(body.scheduledTime) : null;
+  const date = normalizeScheduledDate(body.scheduledDate);
   if (!enrollmentId) {
     return NextResponse.json({ ok: false, message: 'Не выбран ученик.' }, { status: 400 });
   }
 
   const sql = db();
-  const date = todayString();
   const contextRows = await sql<Array<{
     studentId: string;
     student: string;
@@ -248,6 +255,7 @@ export async function POST(request: Request) {
   const contextText = [
     `${courseMethodologyPrompt(context.courseProfile)}\nПравила применения: это постоянная педагогическая настройка. Применяй её, если она не конфликтует с реальным источником и текущей целью ученика. Текущие реальные данные ученика важнее шаблонной методики. Методика не определяет фактическую текущую позицию и не заменяет student context.`,
     `Ученик: ${context.student}${context.grade ? `, ${context.grade} класс` : ''}`,
+    `Дата урока: ${date}`,
     `Курс: ${context.course}`,
     `Школьный раздел: ${context.module || 'не указан'}`,
     `Тема: ${context.topic || 'не указана'}`,
