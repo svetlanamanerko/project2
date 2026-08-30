@@ -10,6 +10,11 @@ import {
   ogeTechnologicalMapScore,
   planningDocumentKind,
 } from '../src/lib/course-planning-guidance-utils.ts';
+import {
+  courseFolderMatchScore,
+  isOgeCourseTitle,
+  pickBestCourseFolder,
+} from '../src/lib/course-folder-match-utils.ts';
 
 assert.equal(planningDocumentKind('01 FEDERAL BASELINE — SPOTLIGHT 5'), 'federal-baseline');
 assert.equal(planningDocumentKind('02 ASSESSMENT MAP — SPOTLIGHT 5'), 'assessment-map');
@@ -46,6 +51,11 @@ assert.equal(moduleBriefScore('05 MODULE BRIEF — MODULE 1 — SCHOOL DAYS', nu
 assert.equal(ogeTechnologicalMapScore('OGE — Block 3 — TECHNOLOGICAL MAP — Holidays & Travel', 3), 100);
 assert.equal(ogeTechnologicalMapScore('OGE — Block 3 — TECHNOLOGICAL MAP — Holidays & Travel', 4), 0);
 
+assert.equal(isOgeCourseTitle('ОГЭ 2027'), true);
+assert.equal(isOgeCourseTitle('Spotlight 7'), false);
+assert.ok(courseFolderMatchScore('ОГЭ 2027', '02 OGE MASTER') > courseFolderMatchScore('ОГЭ 2027', 'Spotlight 5'));
+assert.equal(pickBestCourseFolder('ОГЭ 2027', [{ name: 'Spotlight 5', id: 's5' }, { name: '02 OGE MASTER', id: 'oge' }])?.id, 'oge');
+
 const starlightMapFixture = `STARLIGHT 9 — COURSE MAP\nРАМКА КУРСА\nMODULE 1 — LIFESTYLES — SB pp. 7–21\n02 — WAYS OF LIVING\n03 — CUSTOMS\nMODULE 2 — EXTREME FACTS — SB pp. 27–41\n07 — EXTREME PEOPLE`;
 const compactCourseMap = compactPlanningText('course-map', starlightMapFixture, 1);
 assert.match(compactCourseMap, /SB pp\. 7–21/);
@@ -76,9 +86,16 @@ assert.match(contextSource, /getCoursePlanningGuidance/);
 assert.match(contextSource, /planningGuidance/);
 assert.match(contextSource, /planningStatus/);
 assert.match(contextSource, /ogeMasterCurriculum/);
+assert.match(contextSource, /resolveGoogleDriveCourseFolder/);
+assert.match(contextSource, /courseFolderId: effectiveCourseFolderId/);
 
 const materialsSource = fs.readFileSync(new URL('../src/lib/relevant-course-materials.ts', import.meta.url), 'utf8');
 assert.match(materialsSource, /isPlanningGuidancePath/);
+assert.match(materialsSource, /courseFolderId: resolvedCourseFolderId/);
+
+const historyDriveSource = fs.readFileSync(new URL('../src/lib/historical-course-materials.ts', import.meta.url), 'utf8');
+assert.match(historyDriveSource, /resolveGoogleDriveCourseFolder/);
+assert.match(historyDriveSource, /isOgeCourseTitle/);
 
 const planRoute = fs.readFileSync(new URL('../src/app/api/kie/lesson-plan/route.ts', import.meta.url), 'utf8');
 assert.match(planRoute, /OGE Navigator Baseline/);
@@ -102,7 +119,8 @@ const coursePageSource = fs.readFileSync(new URL('../src/app/(private)/courses/[
 assert.match(coursePageSource, /Что здесь нужно сделать\?/);
 assert.match(coursePageSource, /Ручное добавление этапа/);
 assert.match(coursePageSource, /Для ОГЭ вручную заполнять 72 шага здесь не нужно/);
-assert.match(coursePageSource, /Подключить эту папку/);
+assert.match(coursePageSource, /OGE MASTER подключается автоматически/);
+assert.match(coursePageSource, /Отдельно привязывать папку к этому курсу не нужно/);
 assert.match(coursePageSource, /CourseHelpPopover/);
 
 console.log('Course planning guidance checks passed.');
