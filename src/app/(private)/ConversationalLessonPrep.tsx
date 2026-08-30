@@ -2,6 +2,7 @@
 
 import { MessageCircleMore, Sparkles, WandSparkles } from 'lucide-react';
 import { useState } from 'react';
+import styles from './ConversationalLessonPrep.module.css';
 
 type PlanResponse = {
   ok: boolean;
@@ -103,9 +104,9 @@ export function ConversationalLessonPrep({
     }
   }
 
-  return <div className="conversation-prep">
-    <div className="conversation-prep-head">
-      <div className="conversation-prep-icon"><MessageCircleMore size={22}/></div>
+  return <div className={styles.root}>
+    <div className={styles.head}>
+      <div className={styles.icon}><MessageCircleMore size={22}/></div>
       <div>
         <h2>Что нужно сегодня?</h2>
         <p>Пиши обычными словами, как мне в чате. Всё остальное Мастерская подхватит сама.</p>
@@ -113,41 +114,42 @@ export function ConversationalLessonPrep({
     </div>
 
     <textarea
+      className={styles.textarea}
       value={instruction}
       onChange={(event) => setInstruction(event.target.value)}
       rows={4}
       placeholder="Например: продолжаем по плану, но сегодня ещё повторить Past Simple и дать 10 минут speaking. Домашку сделать короче."
     />
 
-    <div className="conversation-prep-chips">
+    <div className={styles.chips}>
       <button type="button" onClick={() => setInstruction('Продолжаем по плану.')}>Продолжаем по плану</button>
       <button type="button" onClick={() => setInstruction('')}>Без дополнительной заметки</button>
     </div>
 
-    <div className="conversation-prep-actions">
+    <div className={styles.actions}>
       <button className="button primary" type="button" onClick={preparePlan} disabled={loadingPlan || loadingPackage}>
         <Sparkles size={17}/>{loadingPlan ? 'Готовлю…' : plan ? 'Обновить план' : 'Подготовить урок'}
       </button>
-      {plan && <button className="button conversation-secondary" type="button" onClick={assemblePackage} disabled={loadingPackage || loadingPlan}>
+      {plan && <button className={`button ${styles.secondary}`} type="button" onClick={assemblePackage} disabled={loadingPackage || loadingPlan}>
         <WandSparkles size={17}/>{loadingPackage ? 'Собираю материалы…' : lessonPackage ? 'Пересобрать материалы' : 'Собрать материалы'}
       </button>}
     </div>
 
-    {error && <div className="notice danger conversation-message">{error}</div>}
-    {warning && <div className="notice warning conversation-message">{warning}</div>}
+    {error && <div className={`notice danger ${styles.message}`}>{error}</div>}
+    {warning && <div className={`notice warning ${styles.message}`}>{warning}</div>}
 
-    {plan && <section className="conversation-result">
-      <div className="conversation-result-title">План урока{planCredits != null ? ` · ${planCredits} credits` : ''}</div>
-      <div className="conversation-plan-text">{plan}</div>
+    {plan && <section className={styles.result}>
+      <div className={styles.resultTitle}>План урока{planCredits != null ? ` · ${planCredits} credits` : ''}</div>
+      <div className={styles.planText}>{plan}</div>
     </section>}
 
-    {lessonPackage && <section className="conversation-result package-result">
-      <div className="conversation-result-title">Готовые материалы{packageCredits != null ? ` · ${packageCredits} credits` : ''}</div>
+    {lessonPackage && <section className={`${styles.result} ${styles.package}`}>
+      <div className={styles.resultTitle}>Готовые материалы{packageCredits != null ? ` · ${packageCredits} credits` : ''}</div>
       <h3>{lessonPackage.title}</h3>
-      {lessonPackage.sourceLabel && <p className="conversation-source">Источник: {lessonPackage.sourceLabel}</p>}
-      {(lessonPackage.studentDriveUrl || lessonPackage.teacherDriveUrl) && <div className="conversation-file-row">
-        {lessonPackage.studentDriveUrl && <a className="button conversation-secondary" href={lessonPackage.studentDriveUrl} target="_blank" rel="noreferrer">Student Worksheet</a>}
-        {lessonPackage.teacherDriveUrl && <a className="button conversation-secondary" href={lessonPackage.teacherDriveUrl} target="_blank" rel="noreferrer">Teacher Pack</a>}
+      {lessonPackage.sourceLabel && <p className={styles.source}>Источник: {lessonPackage.sourceLabel}</p>}
+      {(lessonPackage.studentDriveUrl || lessonPackage.teacherDriveUrl) && <div className={styles.fileRow}>
+        {lessonPackage.studentDriveUrl && <a className={`button ${styles.secondary}`} href={lessonPackage.studentDriveUrl} target="_blank" rel="noreferrer">Student Worksheet</a>}
+        {lessonPackage.teacherDriveUrl && <a className={`button ${styles.secondary}`} href={lessonPackage.teacherDriveUrl} target="_blank" rel="noreferrer">Teacher Pack</a>}
       </div>}
       <details open><summary>Student Worksheet</summary><div>{lessonPackage.studentWorksheet}</div></details>
       <details><summary>Teacher Pack</summary><div>{lessonPackage.teacherPack}</div></details>
