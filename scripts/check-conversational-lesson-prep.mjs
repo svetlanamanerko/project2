@@ -20,8 +20,11 @@ assert.match(panel, /Продолжаем по плану/);
 assert.match(panel, /\/api\/lesson-focus/);
 assert.match(panel, /\/api\/kie\/lesson-plan/);
 assert.match(panel, /\/api\/kie\/lesson-package/);
+assert.match(panel, /prepareEverything/);
+assert.match(panel, /await requestPackage\(\)/);
 assert.match(panel, /Подготовить урок/);
-assert.match(panel, /Собрать материалы/);
+assert.match(panel, /Собираю материалы/);
+assert.match(panel, /диагностику уже провели\. Начинаем с блока 1/i);
 
 const focusRoute = fs.readFileSync(new URL('../src/app/api/lesson-focus/route.ts', import.meta.url), 'utf8');
 assert.match(focusRoute, /INSERT INTO school_positions/);
