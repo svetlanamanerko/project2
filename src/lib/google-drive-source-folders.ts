@@ -1,4 +1,5 @@
 import 'server-only';
+import { pickBestCourseFolder } from '@/lib/course-folder-match-utils';
 import { getGoogleDriveStatus, refreshGoogleAccessToken, type DriveFolder } from '@/lib/google-drive';
 
 async function driveFetch<T>(accessToken: string, url: string): Promise<T> {
@@ -65,6 +66,17 @@ export async function getGoogleDriveSourceFolders(): Promise<{
     libraryRoot,
     folders: Array.from(candidates.values()).sort((a, b) => a.name.localeCompare(b.name, 'ru')),
   };
+}
+
+export async function resolveGoogleDriveCourseFolder(courseTitle: string, savedFolderId?: string | null): Promise<{
+  folder: DriveFolder | null;
+  automatic: boolean;
+}> {
+  const drive = await getGoogleDriveSourceFolders();
+  const saved = savedFolderId ? drive.folders.find((folder) => folder.id === savedFolderId) || null : null;
+  if (saved) return { folder: saved, automatic: false };
+  const matched = pickBestCourseFolder(courseTitle, drive.folders);
+  return { folder: matched, automatic: Boolean(matched) };
 }
 
 export async function getGoogleDriveCourseFolder(folderId: string): Promise<DriveFolder | null> {
