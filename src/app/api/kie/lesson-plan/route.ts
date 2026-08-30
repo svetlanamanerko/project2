@@ -30,6 +30,13 @@ function todayString() {
   return new Intl.DateTimeFormat('sv-SE', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 }
 
+function normalizeScheduledDate(value: unknown) {
+  const raw = String(value || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return todayString();
+  const parsed = new Date(`${raw}T12:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === raw ? raw : todayString();
+}
+
 export async function POST(request: Request) {
   if (!(await hasSession())) {
     return NextResponse.json({ ok: false, message: 'Нужен вход в Мастерскую.' }, { status: 401 });
@@ -42,9 +49,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, message: 'KIE_API_KEY не найден.' }, { status: 503 });
   }
 
-  const body = await request.json().catch(() => ({})) as { enrollmentId?: string; scheduledTime?: string };
+  const body = await request.json().catch(() => ({})) as { enrollmentId?: string; scheduledTime?: string; scheduledDate?: string };
   const enrollmentId = String(body.enrollmentId || '').trim();
   const scheduledTime = /^\d{2}:\d{2}$/.test(String(body.scheduledTime || '')) ? String(body.scheduledTime) : null;
+  const scheduledDate = normalizeScheduledDate(body.scheduledDate);
   if (!enrollmentId) {
     return NextResponse.json({ ok: false, message: 'Не выбран ученик.' }, { status: 400 });
   }
@@ -131,6 +139,7 @@ export async function POST(request: Request) {
   const sourceContext = [
     `${courseMethodologyPrompt(context.courseProfile)}\nПравила применения: это постоянная педагогическая настройка. Применяй её, если она не конфликтует с реальным источником и текущей целью ученика. Текущие реальные данные ученика важнее шаблонной методики. Методика не определяет фактическую текущую позицию и не заменяет student context.`,
     `Ученик: ${context.student}${context.grade ? `, ${context.grade} класс` : ''}`,
+    `Дата урока: ${scheduledDate}`,
     `Постоянный контекст ученика: ${context.studentContext || 'не заполнен'}`,
     `Курс: ${context.course}`,
     `Модуль/раздел: ${context.module || 'не указан'}`,
@@ -190,10 +199,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, message: 'KIE ответил без текста.' }, { status: 502 });
     }
 
-    const date = todayString();
     const lessonRows = await sql<Array<{ id: string }>>`
       SELECT id FROM lessons
-      WHERE enrollment_id=${enrollmentId} AND scheduled_date=${date}::date
+      WHERE enrollment_id=${enrollmentId} AND scheduled_date=${scheduledDate}::date
         AND (${scheduledTime}::text IS NULL OR scheduled_time=${scheduledTime}::time)
         AND lesson_type <> 'urgent'
       ORDER BY created_at DESC LIMIT 1
@@ -205,7 +213,7 @@ export async function POST(request: Request) {
     } else {
       await sql`
         INSERT INTO lessons (id, enrollment_id, lesson_type, status, title, scheduled_date, scheduled_time, summary, source_position)
-        VALUES (${lessonId}, ${enrollmentId}, 'planned', 'draft', ${context.course}, ${date}::date, ${scheduledTime}::time, ${plan}, ${sourcePosition})
+        VALUES (${lessonId}, ${enrollmentId}, 'planned', 'draft', ${context.course}, ${scheduledDate}::date, ${scheduledTime}::time, ${plan}, ${sourcePosition})
       `;
     }
 
