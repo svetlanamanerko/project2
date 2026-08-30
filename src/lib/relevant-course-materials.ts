@@ -56,22 +56,27 @@ async function listFolder(token: string, parentId: string, signal: AbortSignal |
 
 export async function getRelevantCourseMaterials({
   courseId,
+  courseFolderId: resolvedCourseFolderId,
   lessonIntent,
   usedMaterialIds = [],
   limit = 10,
   signal,
 }: {
   courseId: string;
+  courseFolderId?: string | null;
   studentId: string;
   lessonIntent: Record<string, unknown>;
   usedMaterialIds?: string[];
   limit?: number;
   signal?: AbortSignal;
 }) {
-  const rows = await db()<Array<{ folderId: string | null }>>`
-    SELECT drive_folder_id as "folderId" FROM courses WHERE id=${courseId} AND active=true LIMIT 1
-  `;
-  const courseFolderId = rows[0]?.folderId;
+  let courseFolderId = resolvedCourseFolderId || null;
+  if (!courseFolderId) {
+    const rows = await db()<Array<{ folderId: string | null }>>`
+      SELECT drive_folder_id as "folderId" FROM courses WHERE id=${courseId} AND active=true LIMIT 1
+    `;
+    courseFolderId = rows[0]?.folderId || null;
+  }
   if (!courseFolderId) return [];
 
   const token = await refreshGoogleAccessToken();
