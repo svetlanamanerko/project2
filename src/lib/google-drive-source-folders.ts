@@ -2,6 +2,10 @@ import 'server-only';
 import { courseFolderMatchScore, isOgeCourseTitle, pickBestCourseFolder } from '@/lib/course-folder-match-utils';
 import { getGoogleDriveStatus, refreshGoogleAccessToken, type DriveFolder } from '@/lib/google-drive';
 
+const OGE_MASTER_FOLDER_NAME = '02 OGE MASTER';
+const OGE_FOLDER_CACHE_TTL_MS = 5 * 60 * 1000;
+let ogeFolderCache: { expiresAt: number; folder: DriveFolder | null } | null = null;
+
 async function driveFetch<T>(accessToken: string, url: string): Promise<T> {
   const response = await fetch(url, {
     headers: { Authorization: `Bearer ${accessToken}` },
@@ -41,6 +45,29 @@ async function listChildFolders(accessToken: string, parentId: string) {
   } while (pageToken);
 
   return Array.from(folders.values());
+}
+
+async function findGlobalOgeMasterFolder(accessToken: string): Promise<DriveFolder | null> {
+  if (ogeFolderCache && ogeFolderCache.expiresAt > Date.now()) return ogeFolderCache.folder;
+
+  const params = new URLSearchParams({
+    q: `name = '${OGE_MASTER_FOLDER_NAME}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
+    fields: 'files(id,name,webViewLink)',
+    pageSize: '20',
+    spaces: 'drive',
+    includeItemsFromAllDrives: 'true',
+    supportsAllDrives: 'true',
+  });
+  const payload = await driveFetch<{ files?: DriveFolder[] }>(
+    accessToken,
+    `https://www.googleapis.com/drive/v3/files?${params.toString()}`,
+  );
+  const candidates = payload.files || [];
+  const folder = candidates.find((item) => item.name === OGE_MASTER_FOLDER_NAME)
+    || pickBestCourseFolder('ОГЭ 2027', candidates)
+    || null;
+  ogeFolderCache = { expiresAt: Date.now() + OGE_FOLDER_CACHE_TTL_MS, folder };
+  return folder;
 }
 
 export async function getGoogleDriveSourceFolders(): Promise<{
@@ -83,7 +110,18 @@ export async function resolveGoogleDriveCourseFolder(courseTitle: string, savedF
   }
 
   const matched = pickBestCourseFolder(courseTitle, drive.folders);
-  return { folder: matched, automatic: Boolean(matched) };
+  if (matched) return { folder: matched, automatic: true };
+
+  // 02 OGE MASTER is intentionally stored next to, not inside, 01 SCHOOL COURSES.
+  // Therefore OGE resolution must also search the connected Drive globally instead of
+  // assuming every course source is a direct child of the school-course library root.
+  if (isOge && drive.connected) {
+    const accessToken = await refreshGoogleAccessToken();
+    const globalOgeMaster = await findGlobalOgeMasterFolder(accessToken);
+    if (globalOgeMaster) return { folder: globalOgeMaster, automatic: true };
+  }
+
+  return { folder: null, automatic: false };
 }
 
 export async function getGoogleDriveCourseFolder(folderId: string): Promise<DriveFolder | null> {
