@@ -3,11 +3,15 @@ import { NextResponse } from 'next/server';
 import { hasSession } from '@/lib/auth';
 import { db, dbConfigured } from '@/lib/db';
 import { prepareLessonSourceWithPlanning } from '@/lib/lesson-source-planning';
+import { type PreparedLessonSource } from '@/lib/lesson-source';
 import { buildLessonDocx } from '@/lib/lesson-docx';
 import { generatedDocxMimeType, uploadLessonPackageFiles } from '@/lib/generated-materials-drive';
 import { buildLessonContext } from '@/lib/lesson-context';
-import { generateKieText, KieRequestError } from '@/lib/ai-routing';
+import { generateKieText, KieRequestError, type KieInputPart } from '@/lib/ai-routing';
 import { courseMethodologyPrompt } from '@/lib/course-profile';
+import { isOgeCourseTitle } from '@/lib/course-folder-match-utils';
+import { resolveGoogleDriveCourseFolder } from '@/lib/google-drive-source-folders';
+import { getOgeTask } from '@/lib/oge-navigator-client';
 
 type PackageDraft = {
   title: string;
@@ -101,6 +105,11 @@ function safeFilePart(value: string) {
     .slice(0, 80) || 'Lesson';
 }
 
+function compactOgeText(value: unknown, max = 2600) {
+  const text = typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
+  return text.length <= max ? text : `${text.slice(0, max).trim()}…`;
+}
+
 export async function POST(request: Request) {
   if (!(await hasSession())) {
     return NextResponse.json({ ok: false, message: 'Нужен вход в Мастерскую.' }, { status: 401 });
@@ -157,9 +166,16 @@ export async function POST(request: Request) {
   if (!context) {
     return NextResponse.json({ ok: false, message: 'Маршрут ученика не найден.' }, { status: 404 });
   }
+
   const lessonContext = await buildLessonContext(context.studentId, { enrollmentId });
-  if (!context.courseFolderId) {
-    return NextResponse.json({ ok: false, message: 'У курса пока нет связанной папки Google Drive.' }, { status: 409 });
+  const isOge = lessonContext.planningGuidance.mode === 'oge' || isOgeCourseTitle(context.course);
+  let effectiveCourseFolderId = context.courseFolderId;
+  if (isOge) {
+    try {
+      effectiveCourseFolderId = (await resolveGoogleDriveCourseFolder(context.course, context.courseFolderId)).folder?.id || null;
+    } catch (error) {
+      console.warn('[lesson-package] Не удалось автоматически определить OGE MASTER:', error);
+    }
   }
 
   const [recycling, urgent, skills] = await Promise.all([
@@ -180,26 +196,54 @@ export async function POST(request: Request) {
     `,
   ]);
 
-  let source;
-  try {
-    source = await prepareLessonSourceWithPlanning({
-      courseTitle: context.course,
-      courseFolderId: context.courseFolderId,
-      courseProfile: context.courseProfile,
-      module: context.module,
-      topic: context.topic,
-      note: context.note,
-    }, key, lessonContext.planningGuidance.moduleBrief?.text);
-  } catch (error) {
-    console.error('[lesson-package] Не удалось открыть источник:', error);
-    source = null;
+  let source: PreparedLessonSource | null = null;
+  if (!isOge) {
+    if (!effectiveCourseFolderId) {
+      return NextResponse.json({ ok: false, message: 'У курса пока нет связанной папки Google Drive.' }, { status: 409 });
+    }
+    try {
+      source = await prepareLessonSourceWithPlanning({
+        courseTitle: context.course,
+        courseFolderId: effectiveCourseFolderId,
+        courseProfile: context.courseProfile,
+        module: context.module,
+        topic: context.topic,
+        note: context.note,
+      }, key, lessonContext.planningGuidance.moduleBrief?.text);
+    } catch (error) {
+      console.error('[lesson-package] Не удалось открыть источник:', error);
+      source = null;
+    }
+    if (!source) {
+      return NextResponse.json({
+        ok: false,
+        message: 'Не удалось определить точные страницы учебника. Укажите страницу, 1a / Unit / L01 и сначала обновите AI-план.',
+      }, { status: 409 });
+    }
   }
-  if (!source) {
-    return NextResponse.json({
-      ok: false,
-      message: 'Не удалось определить точные страницы учебника. Укажите страницу, 1a / Unit / L01 и сначала обновите AI-план.',
-    }, { status: 409 });
-  }
+
+  const ogeDetails = isOge
+    ? (await Promise.allSettled(lessonContext.navigatorCandidates.slice(0, 6).map((item) => getOgeTask(item.qid))))
+      .flatMap((result) => result.status === 'fulfilled' && result.value ? [result.value.task] : [])
+    : [];
+  const ogeEvidence = isOge
+    ? ogeDetails.length
+      ? ogeDetails.map((task) => [
+          `QID ${task.qid}`,
+          task.section ? `section=${task.section}` : '',
+          task.topic ? `topic=${task.topic}` : '',
+          task.subtopic ? `subtopic=${task.subtopic}` : '',
+          task.conditionText ? `condition=${compactOgeText(task.conditionText)}` : '',
+          task.contentText ? `content=${compactOgeText(task.contentText)}` : '',
+        ].filter(Boolean).join(' | ')).join('\n')
+      : lessonContext.navigatorCandidates.slice(0, 8).map((task) => `QID ${task.qid} | ${task.section || ''} | ${task.topic || task.subtopic || ''} | ${task.preview || ''}`).join('\n')
+    : '';
+
+  const ogePlanningTitle = lessonContext.planningGuidance.ogeTechnologicalMap?.title
+    || lessonContext.planningGuidance.ogeMasterCurriculum?.title
+    || lessonContext.planningGuidance.ogeNavigatorBaseline?.title
+    || 'OGE Navigator';
+  const sourceLabel = source?.label || `${lessonContext.planningGuidance.ogeBlock || 'OGE'} · ${ogePlanningTitle}`;
 
   const contextText = [
     `${courseMethodologyPrompt(context.courseProfile)}\nПравила применения: это постоянная педагогическая настройка. Применяй её, если она не конфликтует с реальным источником и текущей целью ученика. Текущие реальные данные ученика важнее шаблонной методики. Методика не определяет фактическую текущую позицию и не заменяет student context.`,
@@ -207,16 +251,17 @@ export async function POST(request: Request) {
     `Курс: ${context.course}`,
     `Школьный раздел: ${context.module || 'не указан'}`,
     `Тема: ${context.topic || 'не указана'}`,
-    `Заметка преподавателя: ${context.note || 'нет'}`,
-    `Реальный источник: ${source.label}`,
+    `Заметка преподавателя НА СЕГОДНЯ: ${context.note || 'нет'}`,
+    `Источник: ${sourceLabel}`,
     `Предыдущий AI-план: ${context.plan || 'нет'}`,
     `Повторение: ${recycling.length ? recycling.map((x) => `${x.label} (${x.category})`).join('; ') : 'нет'}`,
     `Срочное: ${urgent.length ? urgent.map((x) => x.description).join(' | ') : 'нет'}`,
     `Навыки: ${skills.length ? skills.map((x) => `${x.skill} ${x.level}/100${x.note ? ` — ${x.note}` : ''}`).join('; ') : 'пока не заполнены'}`,
-    `COURSE BASELINE / MODULE BRIEF: ${JSON.stringify(lessonContext.planningGuidance)}`,
-    `Отобранный lesson context (Course Map → Progress → Drive/Navigator): ${JSON.stringify(lessonContext)}`,
-    `HISTORICAL COVERAGE: ${JSON.stringify(lessonContext.historicalCoverage)}. Это темы и материалы, которые встречались до начала журнала, а не доказательство mastery. Избегай случайного дословного повторения старых материалов. Повторяй тему, если current student context, recycling или история этого требуют.`,
-  ].join('\n');
+    `${isOge ? 'OGE PLANNING' : 'COURSE BASELINE / MODULE BRIEF'}: ${JSON.stringify(lessonContext.planningGuidance)}`,
+    `Отобранный lesson context: ${JSON.stringify(lessonContext)}`,
+    `HISTORICAL COVERAGE: ${JSON.stringify(lessonContext.historicalCoverage)}. Это темы и материалы, которые встречались до начала журнала, а не доказательство mastery.`,
+    isOge ? `ПРОВЕРЕННЫЕ ДАННЫЕ NAVIGATOR (не придумывай другие QID):\n${ogeEvidence || 'Конкретные task details сейчас недоступны. Создавай оригинальную учебную практику по Master Curriculum и не приписывай ей QID.'}` : '',
+  ].filter(Boolean).join('\n');
 
   let communicativeWarmup = '';
   let fastGenerationWarning: string | null = null;
@@ -239,7 +284,22 @@ export async function POST(request: Request) {
     console.error('[lesson-package] fast Communicative Core unavailable:', error);
   }
 
-  const prompt = `Ты методист и автор материалов личной «Мастерской уроков» преподавателя английского. К сообщению приложен реальный фрагмент учебника. Собери ПОЛНЫЙ текстовый пакет к индивидуальному уроку на 60 минут, который можно сразу использовать онлайн и распечатать.
+  const sourceMethod = isOge
+    ? `ОГЭ-РЕЖИМ:
+- Master Curriculum + Student Route + заметка преподавателя определяют, ЧТО делать сегодня; заметка преподавателя на сегодня имеет высокий приоритет.
+- Если диагностика уже проведена и преподаватель явно пишет «начинаем с блока 1», НЕ проводи входную диагностику заново. Начинай реальную работу Block 1 по Master Curriculum.
+- Если указан только Block 1 без конкретного урока, стартуй с первого рабочего урока этого блока из Master Curriculum и подробно отрабатывай его цели.
+- «Тщательно проработать» означает дать реальный полный учебный материал, а не только рекомендации: vocabulary/chunks, controlled grammar/WF practice, receptive task or original training text where appropriate, speaking transfer, reverse translation/accuracy practice, homework and reserve.
+- Navigator QID можно упоминать только из ПРОВЕРЕННЫХ ДАННЫХ NAVIGATOR выше. Не копируй длинные официальные задания; используй QID как официальный anchor, а дополнительные упражнения создавай оригинальными.
+- Если конкретного официального task detail недостаточно, не выдумывай его содержание: создай оригинальную тренировку нужного формата и честно отметь teacher note, что официальный QID нужно открыть отдельно.
+- Для слабой базы объём поддержки увеличивай: больше controlled practice, короткие шаги и повторяемость, но урок остаётся экзаменационно направленным.`
+    : `УЧЕБНИКОВЫЙ РЕЖИМ:
+- учебник — основа урока; внимательно изучи приложенные страницы;
+- Module Brief и Course Baseline определяют цель, приоритет и объём урока; реальный PDF определяет фактическое содержание страницы;
+- не выдумывай содержание страниц и номера упражнений;
+- не перепечатывай длинные тексты учебника: создавай оригинальную дополнительную практику по реально видимой лексике/грамматике/функциям.`;
+
+  const prompt = `Ты методист и автор материалов личной «Мастерской уроков» преподавателя английского. Собери ПОЛНЫЙ текстовый пакет к индивидуальному уроку на 60 минут, который можно сразу использовать онлайн и распечатать.
 
 COMMUNICATIVE CORE (создан отдельным fast-generation route):
 ${communicativeWarmup || 'Fast-generation warm-up недоступен. Не заменяй его глубокой аналитической разминкой.'}
@@ -249,11 +309,9 @@ ${communicativeWarmup || 'Fast-generation warm-up недоступен. Не з�
 КОНТЕКСТ:
 ${contextText}
 
-МЕТОДИКА:
-- учебник — основа урока; внимательно изучи приложенные страницы;
-- Module Brief и Course Baseline определяют цель, приоритет и объём урока; реальный PDF определяет фактическое содержание страницы;
-- не выдумывай содержание страниц и номера упражнений;
-- не перепечатывай длинные тексты учебника: создавай оригинальную дополнительную практику по реально видимой лексике/грамматике/функциям;
+${sourceMethod}
+
+ОБЩАЯ МЕТОДИКА:
 - CORE реально заполняет 60 минут, RESERVE — большой запас;
 - глубокая vocabulary practice + chunks/collocations, grammar recycling, reading/listening где уместно, Reverse Translation для подходящего возраста, обязательный speaking transfer, постепенное снятие опор;
 - строй progression: короткий вход/активация -> recognition/comprehension -> controlled practice -> freer production/speaking;
@@ -262,10 +320,10 @@ ${contextText}
 - Student Worksheet без ответов и teacher-only комментариев;
 - Teacher Pack содержит ответы ко ВСЕМ заданиям, scripts, примерные speaking answers, тайминг и teacher notes;
 - HOMEWORK самостоятельный; VOCABULARY BANK: English phrase — русский перевод — короткий example/collocation;
-- материал помогает школьной программе, а не уводит далеко вперёд.
+- явная заметка преподавателя «что нужно сегодня» должна быть реально выполнена в содержании урока, а не просто пересказана в плане.
 
 ВАЖНО:
-- Сейчас НЕ создавай interactiveLesson, HTML или дизайн-версию. Интерактив строится отдельной кнопкой позже из уже готового пакета, чтобы не тратить AI credits без необходимости.
+- Сейчас НЕ создавай interactiveLesson, HTML или дизайн-версию. Интерактив строится отдельной кнопкой позже из уже готового пакета.
 - Верни только текстовые части пакета.
 
 ВЕРНИ ТОЛЬКО валидный JSON, без markdown и без текста до/после. Структура верхнего уровня строго такая:
@@ -279,21 +337,20 @@ ${contextText}
 }`;
 
   try {
+    const input: KieInputPart[] = [{ type: 'input_text', text: prompt }];
+    if (source) input.push({ type: 'input_file', file_url: source.kieFileUrl });
     const result = await generateKieText({
       route: 'standard',
       key,
       purpose: 'lesson-package',
       studentId: context.studentId,
       enrollmentId,
-      input: [
-        { type: 'input_text', text: prompt },
-        { type: 'input_file', file_url: source.kieFileUrl },
-      ],
+      input,
     });
     const draft = findPackage({ output_text: result.text });
     if (!draft) {
       console.error('[lesson-package] KIE вернул невалидную структуру');
-      return NextResponse.json({ ok: false, message: 'AI собрал урок, но вернул его в неверном формате. Нажмите «Собрать урок» ещё раз.' }, { status: 502 });
+      return NextResponse.json({ ok: false, message: 'AI собрал урок, но вернул его в неверном формате. Нажмите «Собрать материалы» ещё раз.' }, { status: 502 });
     }
 
     let lessonId = context.lessonId;
@@ -301,11 +358,11 @@ ${contextText}
       lessonId = randomUUID();
       await sql`
         INSERT INTO lessons (id, enrollment_id, lesson_type, status, title, scheduled_date, scheduled_time, source_position, summary)
-        VALUES (${lessonId}, ${enrollmentId}, 'planned', 'draft', ${context.course}, ${date}::date, ${scheduledTime}::time, ${source.label}, ${context.plan})
+        VALUES (${lessonId}, ${enrollmentId}, 'planned', 'draft', ${context.course}, ${date}::date, ${scheduledTime}::time, ${sourceLabel}, ${context.plan})
       `;
     }
 
-    const subtitle = `${context.student} · ${context.course} · ${source.label}`;
+    const subtitle = `${context.student} · ${context.course} · ${sourceLabel}`;
     const studentDocx = await buildLessonDocx({
       title: draft.title,
       subtitle,
@@ -328,27 +385,32 @@ ${contextText}
       ],
     });
 
-    const refName = source.reference || `pages-${source.printedStart}-${source.printedEnd}`;
+    const refName = source?.reference || lessonContext.planningGuidance.ogeBlock || 'OGE';
     const baseName = safeFilePart(`${context.course} — ${context.student} — ${refName}`);
     const studentFilename = `${baseName} — Student Worksheet.docx`;
     const teacherFilename = `${baseName} — Teacher Pack.docx`;
 
     let drive: Awaited<ReturnType<typeof uploadLessonPackageFiles>> | null = null;
     let warning: string | null = fastGenerationWarning;
-    try {
-      drive = await uploadLessonPackageFiles({
-        courseFolderId: context.courseFolderId,
-        date,
-        student: context.student,
-        reference: refName,
-        studentFilename,
-        teacherFilename,
-        studentDocx,
-        teacherDocx,
-      });
-    } catch (error) {
-      console.error('[lesson-package] Урок собран, но Drive upload не удался:', error);
-      const driveWarning = 'Урок собран и сохранён в Мастерской, но Word-файлы пока не удалось записать на Google Drive.';
+    if (effectiveCourseFolderId) {
+      try {
+        drive = await uploadLessonPackageFiles({
+          courseFolderId: effectiveCourseFolderId,
+          date,
+          student: context.student,
+          reference: refName,
+          studentFilename,
+          teacherFilename,
+          studentDocx,
+          teacherDocx,
+        });
+      } catch (error) {
+        console.error('[lesson-package] Урок собран, но Drive upload не удался:', error);
+        const driveWarning = 'Урок собран и сохранён в Мастерской, но Word-файлы пока не удалось записать на Google Drive.';
+        warning = warning ? `${warning} ${driveWarning}` : driveWarning;
+      }
+    } else {
+      const driveWarning = 'Урок собран и сохранён в Мастерской, но папка курса на Google Drive не найдена для сохранения Word-файлов.';
       warning = warning ? `${warning} ${driveWarning}` : driveWarning;
     }
 
@@ -361,8 +423,8 @@ ${contextText}
           interactive_json, source_excerpt_path, interactive_generated_at,
           student_drive_file_id, student_drive_url, teacher_drive_file_id, teacher_drive_url, drive_folder_id, credits, updated_at
         ) VALUES (
-          ${lessonId}, ${draft.title}, ${source.label}, ${draft.studentWorksheet}, ${draft.teacherPack}, ${draft.homework}, ${draft.reserve}, ${draft.vocabularyBank},
-          NULL, ${source.excerptPath}, NULL,
+          ${lessonId}, ${draft.title}, ${sourceLabel}, ${draft.studentWorksheet}, ${draft.teacherPack}, ${draft.homework}, ${draft.reserve}, ${draft.vocabularyBank},
+          NULL, ${source?.excerptPath || null}, NULL,
           ${drive?.student.id || null}, ${drive?.student.url || null}, ${drive?.teacher.id || null}, ${drive?.teacher.url || null}, ${drive?.folderId || null}, ${credits}, now()
         )
         ON CONFLICT (lesson_id) DO UPDATE SET
@@ -385,7 +447,7 @@ ${contextText}
           updated_at=now()
       `;
       await tx`
-        UPDATE lessons SET status='prepared', prepared_at=now(), source_position=${source.label}
+        UPDATE lessons SET status='prepared', prepared_at=now(), source_position=${sourceLabel}
         WHERE id=${lessonId}
       `;
 
@@ -407,7 +469,7 @@ ${contextText}
       interactiveReady: false,
       package: {
         title: draft.title,
-        sourceLabel: source.label,
+        sourceLabel,
         studentWorksheet: draft.studentWorksheet,
         teacherPack: draft.teacherPack,
         homework: draft.homework,

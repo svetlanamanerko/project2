@@ -45,6 +45,8 @@ assert.equal(ogeBlockNumberFromIntent({ stage: 'Block 3', lesson: 'Lesson 18' })
 assert.equal(ogeBlockNumberFromIntent({ lesson: '17 — Why We Travel' }), 3);
 assert.equal(ogeBlockNumberFromIntent({ lesson: '56 — Jobs & Careers' }), 8);
 assert.equal(ogeBlockNumberFromIntent({ stage: 'Entry Diagnostic' }), null);
+assert.equal(ogeBlockNumberFromIntent({ teacherInstruction: 'Диагностику провели, начинаем с блока 1.' }), 1);
+assert.equal(ogeBlockNumberFromIntent({ teacherInstruction: 'Сегодня 1 блок, тщательно прорабатываем базу.' }), 1);
 assert.ok(moduleBriefScore('05 MODULE BRIEF — MODULE 1 — SCHOOL DAYS', 1) > moduleBriefScore('05 MODULE BRIEF — MODULE 2 — THAT’S ME', 1));
 assert.equal(moduleBriefScore('04 MODULE BRIEF — TEMPLATE — SPOTLIGHT 5', 1), 0);
 assert.equal(moduleBriefScore('05 MODULE BRIEF — MODULE 1 — SCHOOL DAYS', null), 0);
@@ -54,6 +56,7 @@ assert.equal(ogeTechnologicalMapScore('OGE — Block 3 — TECHNOLOGICAL MAP —
 assert.equal(isOgeCourseTitle('ОГЭ 2027'), true);
 assert.equal(isOgeCourseTitle('Spotlight 7'), false);
 assert.ok(courseFolderMatchScore('ОГЭ 2027', '02 OGE MASTER') > courseFolderMatchScore('ОГЭ 2027', 'Spotlight 5'));
+assert.equal(courseFolderMatchScore('ОГЭ 2027', '01 SCHOOL COURSES'), 0);
 assert.equal(pickBestCourseFolder('ОГЭ 2027', [{ name: 'Spotlight 5', id: 's5' }, { name: '02 OGE MASTER', id: 'oge' }])?.id, 'oge');
 
 const starlightMapFixture = `STARLIGHT 9 — COURSE MAP\nРАМКА КУРСА\nMODULE 1 — LIFESTYLES — SB pp. 7–21\n02 — WAYS OF LIVING\n03 — CUSTOMS\nMODULE 2 — EXTREME FACTS — SB pp. 27–41\n07 — EXTREME PEOPLE`;
@@ -88,6 +91,13 @@ assert.match(contextSource, /planningStatus/);
 assert.match(contextSource, /ogeMasterCurriculum/);
 assert.match(contextSource, /resolveGoogleDriveCourseFolder/);
 assert.match(contextSource, /courseFolderId: effectiveCourseFolderId/);
+assert.match(contextSource, /teacherInstruction: schoolPosition\.note/);
+assert.match(contextSource, /explicitOgeBlock/);
+assert.match(contextSource, /family friends relationships appearance character/);
+
+const sourceFolderResolver = fs.readFileSync(new URL('../src/lib/google-drive-source-folders.ts', import.meta.url), 'utf8');
+assert.match(sourceFolderResolver, /courseFolderMatchScore/);
+assert.match(sourceFolderResolver, /old\/stale saved folder must never override the canonical OGE MASTER source/);
 
 const materialsSource = fs.readFileSync(new URL('../src/lib/relevant-course-materials.ts', import.meta.url), 'utf8');
 assert.match(materialsSource, /isPlanningGuidancePath/);
@@ -106,6 +116,14 @@ assert.match(planRoute, /не заставляет каждого ученика
 assert.match(planRoute, /QID\/ZID/);
 assert.match(planRoute, /HOME \/ SHORTEN/);
 assert.match(planRoute, /Course Map определяет фактическое место ученика/);
+
+const packageRoute = fs.readFileSync(new URL('../src/app/api/kie/lesson-package/route.ts', import.meta.url), 'utf8');
+assert.match(packageRoute, /const isOge =/);
+assert.match(packageRoute, /getOgeTask/);
+assert.match(packageRoute, /ОГЭ-РЕЖИМ/);
+assert.match(packageRoute, /начинаем с блока 1/i);
+assert.match(packageRoute, /source\?\.excerptPath \|\| null/);
+assert.match(packageRoute, /resolveGoogleDriveCourseFolder/);
 
 const previewSource = fs.readFileSync(new URL('../src/app/(private)/students/[studentId]/lesson-preview/page.tsx', import.meta.url), 'utf8');
 assert.match(previewSource, /OGE Planning/);

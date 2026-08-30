@@ -1,5 +1,5 @@
 import 'server-only';
-import { pickBestCourseFolder } from '@/lib/course-folder-match-utils';
+import { courseFolderMatchScore, isOgeCourseTitle, pickBestCourseFolder } from '@/lib/course-folder-match-utils';
 import { getGoogleDriveStatus, refreshGoogleAccessToken, type DriveFolder } from '@/lib/google-drive';
 
 async function driveFetch<T>(accessToken: string, url: string): Promise<T> {
@@ -74,7 +74,14 @@ export async function resolveGoogleDriveCourseFolder(courseTitle: string, savedF
 }> {
   const drive = await getGoogleDriveSourceFolders();
   const saved = savedFolderId ? drive.folders.find((folder) => folder.id === savedFolderId) || null : null;
-  if (saved) return { folder: saved, automatic: false };
+  const isOge = isOgeCourseTitle(courseTitle);
+
+  // Textbook courses intentionally respect an explicitly saved folder. OGE is different:
+  // an old/stale saved folder must never override the canonical OGE MASTER source.
+  if (saved && (!isOge || courseFolderMatchScore(courseTitle, saved.name) >= 50)) {
+    return { folder: saved, automatic: false };
+  }
+
   const matched = pickBestCourseFolder(courseTitle, drive.folders);
   return { folder: matched, automatic: Boolean(matched) };
 }
