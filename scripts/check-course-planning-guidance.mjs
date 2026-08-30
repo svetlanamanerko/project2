@@ -98,6 +98,10 @@ assert.match(contextSource, /family friends relationships appearance character/)
 const sourceFolderResolver = fs.readFileSync(new URL('../src/lib/google-drive-source-folders.ts', import.meta.url), 'utf8');
 assert.match(sourceFolderResolver, /courseFolderMatchScore/);
 assert.match(sourceFolderResolver, /old\/stale saved folder must never override the canonical OGE MASTER source/);
+assert.match(sourceFolderResolver, /OGE_MASTER_FOLDER_NAME = '02 OGE MASTER'/);
+assert.match(sourceFolderResolver, /findGlobalOgeMasterFolder/);
+assert.match(sourceFolderResolver, /stored next to, not inside, 01 SCHOOL COURSES/);
+assert.match(sourceFolderResolver, /name = '\$\{OGE_MASTER_FOLDER_NAME\}'/);
 
 const materialsSource = fs.readFileSync(new URL('../src/lib/relevant-course-materials.ts', import.meta.url), 'utf8');
 assert.match(materialsSource, /isPlanningGuidancePath/);
