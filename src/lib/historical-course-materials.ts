@@ -1,6 +1,8 @@
 import 'server-only';
 import { db } from '@/lib/db';
 import { refreshGoogleAccessToken } from '@/lib/google-drive';
+import { isOgeCourseTitle } from '@/lib/course-folder-match-utils';
+import { resolveGoogleDriveCourseFolder } from '@/lib/google-drive-source-folders';
 import { classifyHistoricalMaterial, type HistoricalMaterialCandidate } from '@/lib/history-bootstrap-utils';
 
 const FOLDER = 'application/vnd.google-apps.folder';
@@ -41,18 +43,29 @@ export async function getCourseHistoricalMaterialCandidates({
   studentId,
   signal,
 }: { enrollmentId: string; studentId: string; signal?: AbortSignal }) {
-  const rows = await db()<Array<{ folderId: string | null; studentName: string }>>`
-    SELECT c.drive_folder_id as "folderId", s.display_name as "studentName"
+  const rows = await db()<Array<{ folderId: string | null; studentName: string; courseTitle: string }>>`
+    SELECT c.drive_folder_id as "folderId", s.display_name as "studentName", c.title as "courseTitle"
     FROM enrollments e
     JOIN students s ON s.id=e.student_id AND s.active=true
     JOIN courses c ON c.id=e.course_id AND c.active=true
     WHERE e.id=${enrollmentId} AND e.student_id=${studentId} AND e.active=true LIMIT 1
   `;
   const context = rows[0];
-  if (!context?.folderId) return [];
+  if (!context) return [];
+
+  let courseFolderId = context.folderId;
+  if (isOgeCourseTitle(context.courseTitle)) {
+    try {
+      const resolved = await resolveGoogleDriveCourseFolder(context.courseTitle, context.folderId);
+      courseFolderId = resolved.folder?.id || context.folderId;
+    } catch (error) {
+      console.warn('[history-bootstrap] Could not auto-resolve OGE MASTER:', error);
+    }
+  }
+  if (!courseFolderId) return [];
 
   const token = await refreshGoogleAccessToken();
-  const pending = [{ id: context.folderId, path: '' }];
+  const pending = [{ id: courseFolderId, path: '' }];
   const visited = new Set<string>();
   const files = new Map<string, HistoricalMaterialCandidate>();
   const budget = { requests: 0 };
