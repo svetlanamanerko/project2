@@ -56,6 +56,9 @@ assert.match(serviceSource, /INSERT INTO history_bootstrap_runs/);
 assert.doesNotMatch(serviceSource, /INSERT INTO historical_coverage/);
 assert.doesNotMatch(serviceSource, /UPDATE student_course_positions|UPDATE skill_profiles|student_course_stage_statuses/);
 assert.match(serviceSource, /status='rejected'/);
+assert.match(serviceSource, /normalizeStoredAnalysis/);
+assert.match(serviceSource, /Student history view unavailable/);
+assert.match(serviceSource, /sourceRefs: Array\.isArray/);
 
 const actionsSource = fs.readFileSync(new URL('../src/app/(private)/actions.ts', import.meta.url), 'utf8');
 const runAction = actionsSource.match(/export async function generateHistoryBootstrapAction[\s\S]*?(?=\nexport async function)/)?.[0] || '';
