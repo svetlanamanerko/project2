@@ -120,7 +120,7 @@ assert.match(planRoute, /Course Map определяет фактическое 
 const packageRoute = fs.readFileSync(new URL('../src/app/api/kie/lesson-package/route.ts', import.meta.url), 'utf8');
 assert.match(packageRoute, /const isOge =/);
 assert.match(packageRoute, /getOgeTask/);
-assert.match(packageRoute, /OGE-РЕЖИМ/);
+assert.match(packageRoute, /ОГЭ-РЕЖИМ/);
 assert.match(packageRoute, /начинаем с блока 1/i);
 assert.match(packageRoute, /source\?\.excerptPath \|\| null/);
 assert.match(packageRoute, /resolveGoogleDriveCourseFolder/);
