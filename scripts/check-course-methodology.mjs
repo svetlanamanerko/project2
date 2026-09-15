@@ -21,8 +21,10 @@ assert.match(courseMethodologyPrompt(spotlight), /^МЕТОДИКА КУРСА:\
 
 const actionSource = fs.readFileSync(new URL('../src/app/(private)/actions.ts', import.meta.url), 'utf8');
 assert.match(actionSource, /export async function updateCourseMethodology/);
-assert.match(actionSource, /COALESCE\(course_profile, '\{\}'::jsonb\)/);
-assert.match(actionSource, /jsonb_build_object\('methodology'/);
+assert.match(actionSource, /SELECT course_profile as "courseProfile"/);
+assert.match(actionSource, /mergeCourseMethodology\(courses\[0\]\.courseProfile, methodology\)/);
+assert.match(actionSource, /course_profile=\$\{JSON\.stringify\(courseProfile\)\}::jsonb/);
+assert.match(actionSource, /\[course-methodology\] save failed/);
 assert.match(actionSource, /WHERE id=\$\{courseId\} AND active=true/);
 assert.match(actionSource, /revalidatePath\(`\/courses\/\$\{courseId\}`\)/);
 
