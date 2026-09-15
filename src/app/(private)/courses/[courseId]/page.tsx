@@ -89,8 +89,7 @@ export default async function CoursePage({ params, searchParams }: PageProps<'/c
         {methodology ? <p className={styles.methodologyText}>{methodology}</p> : <p className="muted small">Методика курса пока не заполнена.</p>}
         <details className={styles.methodologyEditor}>
           <summary>{methodology ? 'Изменить' : 'Настроить методику'}</summary>
-          <form action={updateCourseMethodology}>
-            <input type="hidden" name="courseId" value={courseId}/>
+          <form action={updateCourseMethodology.bind(null, courseId)}>
             <label>Как мы работаем по этому курсу<textarea name="methodology" rows={10} defaultValue={methodology || ''} placeholder={'Учебник — каркас урока. Лексику активно отрабатываем…\nGrammar: explanation → practice → speaking…\nStudent Worksheet без ответов…'}/></label>
             <button className="button primary" type="submit">Сохранить методику</button>
           </form>

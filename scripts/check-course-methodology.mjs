@@ -20,7 +20,8 @@ assert.deepEqual(
 assert.match(courseMethodologyPrompt(spotlight), /^МЕТОДИКА КУРСА:\nУчебник/);
 
 const actionSource = fs.readFileSync(new URL('../src/app/(private)/actions.ts', import.meta.url), 'utf8');
-assert.match(actionSource, /export async function updateCourseMethodology/);
+assert.match(actionSource, /export async function updateCourseMethodology\(courseId: string, formData: FormData\)/);
+assert.match(actionSource, /courseId = String\(courseId \|\| ''\)\.trim\(\)/);
 assert.match(actionSource, /SELECT course_profile as "courseProfile"/);
 assert.match(actionSource, /mergeCourseMethodology\(courses\[0\]\.courseProfile, methodology\)/);
 assert.match(actionSource, /course_profile=\$\{JSON\.stringify\(courseProfile\)\}::jsonb/);
@@ -38,6 +39,8 @@ for (const route of ['lesson-plan', 'lesson-package']) {
 const pageSource = fs.readFileSync(new URL('../src/app/(private)/courses/[courseId]/page.tsx', import.meta.url), 'utf8');
 assert.match(pageSource, /Методика курса пока не заполнена/);
 assert.match(pageSource, /updateCourseMethodology/);
+assert.match(pageSource, /action=\{updateCourseMethodology\.bind\(null, courseId\)\}/);
+assert.doesNotMatch(pageSource, /<input type="hidden" name="courseId" value=\{courseId\}\/?>\s*\n\s*<label>Как мы работаем/);
 assert.doesNotMatch(pageSource, /generateKieText/);
 
 assert.doesNotMatch(actionSource.slice(

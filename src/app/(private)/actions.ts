@@ -350,8 +350,8 @@ export async function updateCourse(formData: FormData) {
   revalidatePath(`/courses/${courseId}`);
 }
 
-export async function updateCourseMethodology(formData: FormData) {
-  const courseId = String(formData.get('courseId') || '').trim();
+export async function updateCourseMethodology(courseId: string, formData: FormData) {
+  courseId = String(courseId || '').trim();
   const methodology = String(formData.get('methodology') || '').trim();
   if (!courseId) return;
 
